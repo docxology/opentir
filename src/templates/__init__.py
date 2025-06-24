@@ -1,0 +1,1 @@
+# Templates package for Opentir documentation generation 
