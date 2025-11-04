@@ -52,9 +52,42 @@ class RepositoryManager:
     async def clone_all_repositories(self, force_update: bool = False) -> Dict[str, Any]:
         """
         Clone all Palantir repositories with organized structure.
-        Intelligently skips existing repositories and only downloads missing ones.
-        Fast local check first, only fetches from GitHub if needed.
-        Returns comprehensive results and statistics.
+        
+        Intelligently manages repository cloning with:
+        - Fast local repository detection (avoids GitHub API calls when possible)
+        - Incremental cloning (only downloads missing repositories)
+        - Concurrent cloning with rate limiting
+        - Automatic organization by language, category, and popularity
+        - Comprehensive error handling and reporting
+        
+        Args:
+            force_update: If True, force re-clone all repositories even if they exist locally.
+                         If False, only clone missing repositories.
+        
+        Returns:
+            Dict containing comprehensive cloning results:
+                - success: bool - Whether cloning operation succeeded
+                - total_repositories: int - Total repos available on GitHub
+                - existing_repositories: int - Repos already present locally
+                - new_repositories: int - Newly cloned repositories
+                - failed_clones: int - Number of failed clone attempts
+                - total_size_mb: float - Total size of newly cloned repos (MB)
+                - repositories: List[Dict] - Details of each repository:
+                    - name: str - Repository name
+                    - action: str - Action taken (cloned, updated, existing, skipped)
+                    - path: str - Local path to repository
+                    - size_mb: float - Repository size in MB
+                    - language: str - Primary language
+                    - stars: int - GitHub stars
+                    - archived: bool - Whether repo is archived
+                - failures: List[Dict] - Details of failed clones:
+                    - name: str - Repository name
+                    - error: str - Error message
+        
+        Note:
+            - If 200+ repos exist locally and force_update=False, skips GitHub API call
+            - Uses shallow clones (depth=1) for efficiency
+            - Organizes repos into by_language/, by_category/, popular/, archived/ directories
         """
         self.logger.info("Starting intelligent repository management...")
         

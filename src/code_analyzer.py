@@ -73,7 +73,49 @@ class CodeAnalyzer:
     def analyze_repository(self, repo_path: Path) -> RepositoryAnalysis:
         """
         Analyze entire repository and extract all code elements.
-        Returns comprehensive analysis including functionality mapping.
+        
+        Performs comprehensive code analysis across all supported languages:
+        - Multi-language parsing (Python, JavaScript, TypeScript, Java, Go)
+        - Function, class, and method extraction
+        - Complexity calculation (cyclomatic complexity)
+        - Import and dependency detection
+        - Documentation extraction (docstrings)
+        - Functionality categorization
+        
+        Args:
+            repo_path: Path to repository directory to analyze
+        
+        Returns:
+            RepositoryAnalysis containing:
+                - repo_name: str - Repository name
+                - total_files: int - Number of analyzed files
+                - total_lines: int - Total lines of code
+                - languages: Dict[str, int] - Language -> file count mapping
+                - file_analyses: List[FileAnalysis] - Per-file analysis results
+                - all_elements: List[CodeElement] - All extracted code elements
+                - functionality_summary: Dict - Categorized functionality mapping:
+                    - total_elements: int
+                    - by_type: Dict - Elements by type (function, class, method)
+                    - by_language: Dict - Elements by language
+                    - public_methods: List - Public methods with details
+                    - classes: List - Classes with details
+                    - async_functions: List - Async functions
+                    - functionality_categories: Dict - Elements by category
+                - metrics: Dict - Quality and complexity metrics:
+                    - average_file_complexity: float
+                    - total_complexity: int
+                    - average_elements_per_file: float
+                    - public_method_ratio: float
+                    - async_function_count: int
+                    - documentation_ratio: float
+        
+        Raises:
+            ValueError: If repository path does not exist
+        
+        Note:
+            - Skips files in .git/, node_modules/, build/, dist/, etc.
+            - Handles syntax errors gracefully (skips problematic files)
+            - Uses AST parsing for Python, regex for other languages
         """
         self.logger.info(f"Analyzing repository: {repo_path.name}")
         

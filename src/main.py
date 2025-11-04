@@ -55,13 +55,43 @@ class OpentirOrchestrator:
         """
         Execute complete Opentir workflow.
         
-        Performs all steps:
-        1. Fetch repository information
-        2. Clone all repositories
-        3. Analyze code across all repositories  
-        4. Generate comprehensive documentation
+        Performs comprehensive end-to-end analysis of Palantir's open source ecosystem:
+        1. Fetch organization and repository information from GitHub
+        2. Clone/update all repositories with intelligent caching
+        3. Analyze code across all repositories (extract functions, classes, methods)
+        4. Generate comprehensive documentation with functionality matrices
         
-        Returns comprehensive results and statistics.
+        Args:
+            force_reclone: If True, force re-clone existing repositories (default: False)
+            skip_analysis: If True, skip code analysis step (default: False)
+            skip_docs: If True, skip documentation generation step (default: False)
+        
+        Returns:
+            Dict containing comprehensive workflow results:
+                - success: bool - Whether workflow completed successfully
+                - execution_time: float - Total execution time in seconds
+                - execution_time_formatted: str - Human-readable execution time
+                - steps: Dict - Results from each workflow step:
+                    - fetch_info: Organization and repository list
+                    - clone_repos: Repository cloning results
+                    - analyze_code: Code analysis results (if not skipped)
+                    - generate_docs: Documentation generation results (if not skipped)
+                - summary: Dict - Aggregated summary statistics:
+                    - steps_completed: int
+                    - total_repositories: int
+                    - successful_clones: int
+                    - repositories_analyzed: int
+                    - total_elements_extracted: int
+                    - documentation_generated: bool
+                - errors: List[str] - List of any errors encountered
+        
+        Raises:
+            Exception: If critical workflow steps fail (cloning, analysis, etc.)
+        
+        Example:
+            >>> orchestrator = OpentirOrchestrator()
+            >>> results = await orchestrator.execute_complete_workflow()
+            >>> print(f"Analyzed {results['summary']['repositories_analyzed']} repositories")
         """
         self.logger.info("🚀 Starting complete Opentir workflow...")
         start_time = datetime.now()
@@ -148,7 +178,28 @@ class OpentirOrchestrator:
             return workflow_results
     
     async def _execute_step(self, step_name: str, step_function) -> Any:
-        """Execute a workflow step with error handling and logging."""
+        """
+        Execute a workflow step with comprehensive error handling and logging.
+        
+        Wraps step execution with:
+        - Error handling and recovery
+        - Progress logging
+        - State tracking
+        - Exception capture
+        
+        Args:
+            step_name: Name of the workflow step (for logging and tracking)
+            step_function: Function or coroutine to execute for this step
+        
+        Returns:
+            Result from step_function execution
+        
+        Raises:
+            Exception: Re-raises any exception from step_function with context
+        
+        Note:
+            Updates execution_state with step completion status and errors.
+        """
         try:
             self.logger.info(f"▶️  Executing step: {step_name}")
             result = await step_function() if asyncio.iscoroutinefunction(step_function) else step_function()
@@ -200,7 +251,35 @@ class OpentirOrchestrator:
         return categories
     
     async def _analyze_all_repositories(self) -> Dict[str, Any]:
-        """Analyze code across all cloned repositories."""
+        """
+        Analyze code across all cloned repositories.
+        
+        Performs comprehensive code analysis including:
+        - Multi-language parsing (Python, JavaScript, TypeScript, Java, Go)
+        - Function, class, and method extraction
+        - Complexity calculation
+        - Functionality pattern detection
+        - Cross-repository dependency analysis
+        
+        Returns:
+            Dict containing analysis results:
+                - success: bool - Whether analysis completed successfully
+                - total_repositories_analyzed: int - Number of repos analyzed
+                - failed_analyses: int - Number of failed analyses
+                - total_elements_extracted: int - Total code elements found
+                - total_lines_analyzed: int - Total lines of code analyzed
+                - functionality_matrix: Dict - Cross-repo functionality mapping
+                - analyses: List[RepositoryAnalysis] - Individual repo analyses
+                - failures: List[Dict] - Details of failed analyses
+        
+        Raises:
+            Exception: If no repositories found for analysis
+        
+        Note:
+            Saves analysis results to analysis_results/ directory:
+            - repository_analyses.json: Individual repository analyses
+            - functionality_matrix.json: Cross-repository functionality matrix
+        """
         repos_dir = self.base_dir / config.repos_dir / "all_repos"
         
         if not repos_dir.exists():

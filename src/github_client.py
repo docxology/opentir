@@ -46,18 +46,38 @@ class GitHubClient:
         """Check and handle rate limits."""
         try:
             rate_limit = self.github.get_rate_limit()
-            core_limit = rate_limit.core
             
-            if core_limit.remaining < 10:  # Conservative threshold
-                reset_time = core_limit.reset.timestamp()
-                sleep_time = max(0, reset_time - time.time() + 1)
+            # Handle both old and new PyGithub API structures
+            if hasattr(rate_limit, 'core'):
+                # Old API structure
+                core_limit = rate_limit.core
+                remaining = core_limit.remaining
+                reset_time = core_limit.reset.timestamp() if hasattr(core_limit.reset, 'timestamp') else core_limit.reset
+            elif hasattr(rate_limit, 'resources'):
+                # New API structure
+                core_limit = rate_limit.resources.core
+                remaining = core_limit.remaining
+                reset_time = core_limit.reset.timestamp() if hasattr(core_limit.reset, 'timestamp') else core_limit.reset
+            else:
+                # Try direct attributes
+                remaining = getattr(rate_limit, 'remaining', 5000)
+                reset_time = getattr(rate_limit, 'reset', time.time() + 3600)
+                if hasattr(reset_time, 'timestamp'):
+                    reset_time = reset_time.timestamp()
+            
+            if remaining < 10:  # Conservative threshold
+                if isinstance(reset_time, (int, float)):
+                    sleep_time = max(0, reset_time - time.time() + 1)
+                else:
+                    sleep_time = 60  # Default 1 minute if we can't determine
                 
                 if sleep_time > 0:
-                    self.logger.warning(f"Rate limit nearly exceeded. Sleeping for {sleep_time:.1f} seconds")
-                    time.sleep(sleep_time)
+                    self.logger.warning(f"Rate limit nearly exceeded ({remaining} remaining). Sleeping for {sleep_time:.1f} seconds")
+                    time.sleep(min(sleep_time, 300))  # Cap at 5 minutes
                     
         except Exception as e:
-            self.logger.warning(f"Could not check rate limit: {e}")
+            # Silently continue - rate limit checking is best effort
+            pass
     
     def get_organization_info(self, org_name: str = PALANTIR_ORG) -> Dict[str, Any]:
         """Get comprehensive organization information."""
