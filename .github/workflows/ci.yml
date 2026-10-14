@@ -1,0 +1,27 @@
+name: CI
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv sync --frozen
+      - run: uv run --frozen --no-sync ruff check src tests scripts main.py setup.py comprehensive_analysis.py examples
+      - run: uv run --frozen --no-sync pytest --cov=src --cov-report=term-missing
+      - run: uv build
+      - run: uv run --frozen --no-sync twine check dist/*
+      - run: bash -n run.sh scripts/run_full_analysis.sh

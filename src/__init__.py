@@ -8,7 +8,7 @@ This package provides tools for:
 - Creating organized project structures
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "Opentir Contributors"
 __license__ = "Apache 2.0"
 
@@ -27,4 +27,4 @@ __all__ = [
     "CodeAnalyzer",
     "Logger",
     "ConfigManager",
-] 
+]

@@ -175,4 +175,7 @@ tmp/
 
 # Configuration files with sensitive data
 opentir_config.json
-config.json 
+config.json
+!.github/workflows/*.yml
+!uv.lock
+!.python-version
