@@ -44,7 +44,7 @@ class TestMultiRepositoryAnalyzer:
     
     def test_get_all_repository_paths_missing_directory(self):
         """Test error when repository directory doesn't exist."""
-        analyzer = MultiRepositoryAnalyzer(repos_base_path=Path("/nonexistent"))
+        analyzer = MultiRepositoryAnalyzer(repos_base_path=self.temp_dir / "nonexistent")
         
         with pytest.raises(ValueError, match="Repository directory does not exist"):
             analyzer._get_all_repository_paths()
@@ -301,4 +301,4 @@ class TestMultiRepositoryAnalyzerIntegration:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__]) 
+    pytest.main([__file__])

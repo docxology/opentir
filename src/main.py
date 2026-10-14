@@ -4,6 +4,8 @@ Provides high-level interface for comprehensive Palantir ecosystem analysis.
 """
 
 import asyncio
+import inspect
+from dataclasses import asdict
 import json
 from pathlib import Path
 from typing import Dict, List, Any, Optional
@@ -33,6 +35,7 @@ class OpentirOrchestrator:
         # Initialize components
         self.github_client = GitHubClient(self.github_token)
         self.repo_manager = RepositoryManager(self.base_dir)
+        self.repo_manager.github_client = self.github_client
         self.code_analyzer = CodeAnalyzer()
         self.docs_generator = DocumentationGenerator(self.base_dir / config.docs_dir)
         
@@ -202,7 +205,9 @@ class OpentirOrchestrator:
         """
         try:
             self.logger.info(f"▶️  Executing step: {step_name}")
-            result = await step_function() if asyncio.iscoroutinefunction(step_function) else step_function()
+            result = step_function()
+            if inspect.isawaitable(result):
+                result = await result
             self.execution_state["steps_completed"].append(step_name)
             self.logger.info(f"✅ Step completed: {step_name}")
             return result
@@ -309,6 +314,8 @@ class OpentirOrchestrator:
         # Save detailed analyses
         with open(analysis_dir / "repository_analyses.json", 'w') as f:
             json.dump([self._serialize_analysis(a) for a in analyses], f, indent=2, default=str)
+        with open(analysis_dir / "all_analyses.json", 'w', encoding='utf-8') as f:
+            json.dump([asdict(a) for a in analyses], f, indent=2)
         
         # Save functionality matrix
         with open(analysis_dir / "functionality_matrix.json", 'w') as f:
@@ -327,15 +334,7 @@ class OpentirOrchestrator:
     
     def _serialize_analysis(self, analysis: RepositoryAnalysis) -> Dict[str, Any]:
         """Serialize repository analysis for JSON output."""
-        return {
-            "repo_name": analysis.repo_name,
-            "total_files": analysis.total_files,
-            "total_lines": analysis.total_lines,
-            "languages": analysis.languages,
-            "functionality_summary": analysis.functionality_summary,
-            "metrics": analysis.metrics,
-            "element_count": len(analysis.all_elements),
-        }
+        return asdict(analysis) | {"element_count": len(analysis.all_elements)}
     
     async def _generate_comprehensive_docs(self, analysis_results: Dict[str, Any], org_info: Dict[str, Any]) -> Dict[str, Any]:
         """Generate comprehensive documentation."""
@@ -458,6 +457,8 @@ class OpentirOrchestrator:
         
         key_files = ["index.md", "mkdocs.yml"]
         existing_files = [f for f in key_files if (docs_dir / f).exists()]
+        if "mkdocs.yml" not in existing_files and (docs_dir.parent / f"{docs_dir.name}.mkdocs.yml").exists():
+            existing_files.append("mkdocs.yml")
         
         if len(existing_files) == len(key_files):
             return {
@@ -501,4 +502,4 @@ def get_workspace_status(base_dir: Optional[Path] = None) -> Dict[str, Any]:
     return orchestrator.get_workspace_status()
 
 
-# Module-level convenience functions remain available for import 
+# Module-level convenience functions remain available for import

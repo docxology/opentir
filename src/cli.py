@@ -7,16 +7,20 @@ import click
 import asyncio
 import json
 import os
+import sys
+from dataclasses import asdict
+from functools import wraps
 from pathlib import Path
 from typing import Optional
 
 from .github_client import GitHubClient
 from .repo_manager import RepositoryManager
-from .code_analyzer import CodeAnalyzer
+from .code_analyzer import CodeAnalyzer, RepositoryAnalysis
 from .docs_generator import DocumentationGenerator
 from .multi_repo_analyzer import MultiRepositoryAnalyzer
 from .utils import Logger, ConfigManager
-from .config import config, ensure_directories
+from .config import config, ensure_directories, update_config
+from . import __version__
 
 # Global logger
 logger = Logger("opentir_cli")
@@ -26,6 +30,8 @@ def prompt_for_github_token() -> Optional[str]:
     Interactive prompt for GitHub token with helpful instructions.
     Returns token if provided, None if user chooses to skip.
     """
+    if not sys.stdin.isatty():
+        return None
     click.echo("\n" + "="*70)
     click.echo("🔑 GitHub API Token Setup")
     click.echo("="*70)
@@ -46,7 +52,7 @@ def prompt_for_github_token() -> Optional[str]:
     
     # Give user options for how to provide token
     click.echo("🔧 How would you like to provide your token?")
-    click.echo("   1. Paste it here (visible - recommended for testing)")
+    click.echo("   1. Paste it securely (hidden input)")
     click.echo("   2. Paste it securely (hidden input)")
     click.echo("   3. Skip and continue without token")
     click.echo()
@@ -62,6 +68,7 @@ def prompt_for_github_token() -> Optional[str]:
         token = click.prompt(
             "Paste your GitHub token here",
             default="",
+            hide_input=True,
             show_default=False
         )
     elif choice == "2":
@@ -83,6 +90,7 @@ def prompt_for_github_token() -> Optional[str]:
         return None
 
 @click.group()
+@click.version_option(version=__version__)
 @click.option('--config-file', '-c', help='Configuration file path')
 @click.option('--verbose', '-v', is_flag=True, help='Enable verbose logging')
 @click.pass_context
@@ -94,11 +102,14 @@ def main(ctx, config_file, verbose):
         config.log_level = "DEBUG"
     
     if config_file:
-        config_manager = ConfigManager(config_file)
-        config_data = config_manager.load_config()
-        # Update global config with loaded data
+        try:
+            with open(config_file, encoding="utf-8") as stream:
+                update_config(**json.load(stream))
+        except (OSError, ValueError, TypeError) as exc:
+            raise click.ClickException(f"Invalid configuration: {exc}") from exc
     
     ensure_directories()
+    logger._setup_logger()
     logger.info("Opentir CLI initialized")
 
 @main.command()
@@ -117,6 +128,8 @@ def fetch_repos(token, output):
     try:
         # Get organization info
         org_info = client.get_organization_info()
+        if "error" in org_info:
+            raise click.ClickException(f"Organization lookup failed: {org_info['error']}")
         logger.info(f"Fetching repos for: {org_info.get('name', 'Palantir')}")
         
         # Get all repositories
@@ -197,7 +210,12 @@ def analyze(repo_path, output_dir):
             
             result_file = output_path / f"{repo_analysis.repo_name}_analysis.json"
             with open(result_file, 'w') as f:
-                json.dump(repo_analysis.__dict__, f, indent=2, default=str)
+                json.dump(asdict(repo_analysis), f, indent=2)
+
+            with open(output_path / "all_analyses.json", 'w', encoding='utf-8') as f:
+                json.dump([asdict(repo_analysis)], f, indent=2)
+            with open(output_path / "functionality_matrix.json", 'w', encoding='utf-8') as f:
+                json.dump(analyzer.generate_functionality_matrix([repo_analysis]), f, indent=2)
             
             click.echo(f"✅ Analysis completed for {repo_analysis.repo_name}")
             click.echo(f"📊 Found {len(repo_analysis.all_elements)} code elements")
@@ -230,7 +248,7 @@ def analyze(repo_path, output_dir):
             matrix_file = output_path / "functionality_matrix.json"
             
             with open(analyses_file, 'w') as f:
-                json.dump([a.__dict__ for a in analyses], f, indent=2, default=str)
+                json.dump([asdict(a) for a in analyses], f, indent=2)
             
             with open(matrix_file, 'w') as f:
                 json.dump(functionality_matrix, f, indent=2, default=str)
@@ -247,7 +265,8 @@ def analyze(repo_path, output_dir):
 @click.option('--analysis-dir', '-a', help='Directory with analysis results')
 @click.option('--output-dir', '-o', help='Output directory for documentation')
 @click.option('--token', '-t', help='GitHub API token')
-def generate_docs(analysis_dir, output_dir, token):
+@click.option('--offline', is_flag=True, help='Generate from saved analysis without GitHub access')
+def generate_docs(analysis_dir, output_dir, token, offline):
     """Generate comprehensive documentation with vast functionality tables."""
     logger.info("Starting documentation generation...")
     
@@ -270,19 +289,20 @@ def generate_docs(analysis_dir, output_dir, token):
             functionality_matrix = json.load(f)
         
         # Get organization info
-        github_client = GitHubClient(token)
-        org_info = github_client.get_organization_info()
+        if offline:
+            org_info = {"name": config.github_org, "login": config.github_org}
+        else:
+            github_client = GitHubClient(token)
+            org_info = github_client.get_organization_info(config.github_org)
+            if "error" in org_info:
+                raise click.ClickException(f"Organization lookup failed: {org_info['error']}")
         
         # Generate documentation
         docs_generator = DocumentationGenerator(docs_path)
         
         # Convert analyses data back to objects (simplified)
-        from .code_analyzer import RepositoryAnalysis
-        analyses = []
-        for data in analyses_data:
-            # Create simplified analysis objects for documentation
-            analysis = type('Analysis', (), data)()
-            analyses.append(analysis)
+        from pydantic import TypeAdapter
+        analyses = TypeAdapter(list[RepositoryAnalysis]).validate_python(analyses_data)
         
         results = docs_generator.generate_complete_documentation(
             analyses, functionality_matrix, org_info
@@ -294,9 +314,7 @@ def generate_docs(analysis_dir, output_dir, token):
         
         # Suggest next steps
         click.echo("\n🚀 Next steps:")
-        click.echo(f"   1. cd {docs_path}")
-        click.echo("   2. pip install mkdocs mkdocs-material")
-        click.echo("   3. mkdocs serve")
+        click.echo(f"   uv run mkdocs serve -f {results['mkdocs_config']}")
         
     except Exception as e:
         logger.error(f"Error generating documentation: {e}")
@@ -348,6 +366,8 @@ async def build_complete(token):
         click.echo("🔄 Step 3: Generating comprehensive documentation...")
         github_client = GitHubClient(token)
         org_info = github_client.get_organization_info()
+        if "error" in org_info:
+            raise click.ClickException(f"Organization lookup failed: {org_info['error']}")
         
         docs_generator = DocumentationGenerator()
         docs_results = docs_generator.generate_complete_documentation(
@@ -491,6 +511,7 @@ def cleanup(keep_popular):
 # Async command wrapper
 def async_command(f):
     """Wrapper to run async commands."""
+    @wraps(f)
     def wrapper(*args, **kwargs):
         return asyncio.run(f(*args, **kwargs))
     return wrapper
@@ -500,4 +521,4 @@ clone_all.callback = async_command(clone_all.callback)
 build_complete.callback = async_command(build_complete.callback)
 
 if __name__ == '__main__':
-    main() 
+    main()

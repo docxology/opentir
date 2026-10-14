@@ -124,14 +124,19 @@ class RepositoryManager:
                 "total_repositories": local_status['local_count'],
                 "existing_repositories": local_status['local_count'],
                 "new_repositories": 0,
+                "successful_clones": 0,
                 "failed_clones": 0,
+                "total_size_mb": 0.0,
                 "message": f"All {local_status['local_count']} repositories already exist locally",
                 "repositories": existing_results,
             }
         
         # Step 2: If we need to check GitHub (few local repos or force_update)
         self.logger.info("📡 Fetching repository list from GitHub for comparison...")
-        repositories = self.github_client.get_all_repositories()
+        try:
+            repositories = self.github_client.get_all_repositories()
+        except (OSError, RuntimeError) as exc:
+            return {"success": False, "error": str(exc), "repositories": []}
         
         if not repositories:
             self.logger.error("No repositories found from GitHub API")
@@ -166,7 +171,9 @@ class RepositoryManager:
                 "total_repositories": len(repositories),
                 "existing_repositories": repo_analysis['existing_count'],
                 "new_repositories": 0,
+                "successful_clones": 0,
                 "failed_clones": 0,
+                "total_size_mb": 0.0,
                 "message": "All repositories already exist",
                 "repositories": existing_results,
             }
@@ -178,7 +185,7 @@ class RepositoryManager:
             self.logger.info(f"📥 Downloading {len(repos_to_process)} repositories...")
             
             # Clone repositories with concurrency control
-            semaphore = asyncio.Semaphore(5)  # Limit concurrent clones
+            semaphore = asyncio.Semaphore(config.max_concurrent_requests)
             tasks = []
             
             for repo_info in repos_to_process:
@@ -225,10 +232,11 @@ class RepositoryManager:
         await self._organize_repositories(all_successful)
         
         summary = {
-            "success": True,
+            "success": not failed_clones,
             "total_repositories": len(repositories),
             "existing_repositories": repo_analysis['existing_count'],
             "new_repositories": len(successful_clones),
+            "successful_clones": len(successful_clones),
             "failed_clones": len(failed_clones),
             "total_size_mb": total_size,
             "repositories": all_successful,
@@ -261,7 +269,7 @@ class RepositoryManager:
         if local_status is None:
             local_status = self._get_fast_local_repository_status()
         
-        existing_repos = local_status['local_repos']
+        existing_repos = set(local_status['local_repos'])
         
         # Get list of available repositories from GitHub
         available_repo_names = {repo.name for repo in available_repos}
@@ -291,12 +299,18 @@ class RepositoryManager:
         repo_path = self.repos_dir / "all_repos" / repo_info.name
         
         try:
-            # Check if repository already exists
-            if repo_path.exists():
+            if repo_info.name in {".", ".."} or Path(repo_info.name).name != repo_info.name:
+                raise ValueError("Repository name must be a single directory name")
+            if repo_path.is_symlink():
+                raise ValueError("Repository path must not be a symbolic link")
+            existed = repo_path.exists()
+            if existed:
                 if force_update:
                     self.logger.info(f"Updating existing repository: {repo_info.name}")
                     repo = Repo(repo_path)
-                    repo.remotes.origin.pull()
+                    if repo.is_dirty(untracked_files=True):
+                        raise GitCommandError("pull", 1, stderr="Local changes present; update refused")
+                    repo.remotes.origin.pull(ff_only=True)
                 else:
                     self.logger.debug(f"Repository already exists: {repo_info.name}")
                     return {
@@ -313,7 +327,7 @@ class RepositoryManager:
             return {
                 "success": True,
                 "name": repo_info.name,
-                "action": "updated" if force_update and repo_path.exists() else "cloned",
+                "action": "updated" if force_update and existed else "cloned",
                 "path": str(repo_path),
                 "size_mb": self._get_repo_size_mb(repo_path),
                 "language": repo_info.language,
@@ -349,6 +363,7 @@ class RepositoryManager:
     async def _organize_repositories(self, successful_repos: List[Dict[str, Any]]) -> None:
         """Organize repositories into categorical directories."""
         self.logger.info("Organizing repositories by categories...")
+        self.setup_repository_structure()
         
         # Group by language
         language_groups = {}
@@ -356,7 +371,7 @@ class RepositoryManager:
         archived_repos = []
         
         for repo in successful_repos:
-            language = repo.get("language", "Unknown").lower()
+            language = (repo.get("language") or "Unknown").lower()
             if language not in language_groups:
                 language_groups[language] = []
             language_groups[language].append(repo)
@@ -382,7 +397,7 @@ class RepositoryManager:
             FileUtils.ensure_directory(language_dir)
             
             for repo in repos:
-                source_path = Path(repo["path"])
+                source_path = Path(repo["path"]).resolve()
                 link_path = language_dir / repo["name"]
                 
                 if source_path.exists() and not link_path.exists():
@@ -397,7 +412,7 @@ class RepositoryManager:
         # Organize popular repositories
         popular_dir = self.repos_dir / "popular"
         for repo in popular_repos:
-            source_path = Path(repo["path"])
+            source_path = Path(repo["path"]).resolve()
             link_path = popular_dir / repo["name"]
             
             if source_path.exists() and not link_path.exists():
@@ -412,7 +427,7 @@ class RepositoryManager:
         # Organize archived repositories
         archived_dir = self.repos_dir / "archived"
         for repo in archived_repos:
-            source_path = Path(repo["path"])
+            source_path = Path(repo["path"]).resolve()
             link_path = archived_dir / repo["name"]
             
             if source_path.exists() and not link_path.exists():
@@ -512,10 +527,7 @@ class RepositoryManager:
                     repo_size = self._get_repo_size_mb(repo_dir)
                     
                     # Logic for cleanup (can be enhanced with more criteria)
-                    should_remove = False
-                    
-                    if not keep_popular:
-                        should_remove = True
+                    should_remove = not keep_popular or not (self.repos_dir / "popular" / repo_dir.name).exists()
                     
                     if should_remove:
                         shutil.rmtree(repo_dir)
@@ -537,4 +549,4 @@ class RepositoryManager:
     
     async def update_all_repositories(self) -> Dict[str, Any]:
         """Update all existing repositories."""
-        return await self.clone_all_repositories(force_update=True) 
+        return await self.clone_all_repositories(force_update=True)

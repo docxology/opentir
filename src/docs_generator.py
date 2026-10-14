@@ -12,7 +12,7 @@ from jinja2 import Environment, FileSystemLoader, Template
 import pandas as pd
 
 from .config import config, DOCS_TEMPLATE_STRUCTURE
-from .utils import Logger, FileUtils, format_bytes, format_duration
+from .utils import Logger, FileUtils, format_bytes, format_duration, sanitize_filename
 from .code_analyzer import RepositoryAnalysis, CodeElement
 
 class DocumentationGenerator:
@@ -28,12 +28,13 @@ class DocumentationGenerator:
         
         # Ensure docs directory exists
         FileUtils.ensure_directory(self.docs_dir)
+        self._setup_docs_structure()
         
         # Setup Jinja2 template environment
         template_dir = Path(__file__).parent / "templates"
         self.jinja_env = Environment(
             loader=FileSystemLoader(str(template_dir)),
-            autoescape=True
+            autoescape=False
         )
         
         # Initialize template directory if it doesn't exist
@@ -41,11 +42,13 @@ class DocumentationGenerator:
     
     def _setup_templates(self) -> None:
         """Setup template directory with default templates."""
-        template_dir = Path(__file__).parent / "templates"
-        FileUtils.ensure_directory(template_dir)
-        
-        # Create default templates if they don't exist
-        self._create_default_templates(template_dir)
+        for name in (
+            "main_index.md", "repository_detail.md", "functionality_matrix.md",
+            "language_index.md", "category_index.md", "api_methods.md",
+            "api_classes.md", "api_modules.md", "dependencies_analysis.md",
+            "metrics_analysis.md",
+        ):
+            self.jinja_env.get_template(name)
     
     def generate_complete_documentation(
         self, 
@@ -58,6 +61,9 @@ class DocumentationGenerator:
         Creates comprehensive docs with vast functionality tables.
         """
         self.logger.info("Generating complete documentation suite...")
+        for analysis in repository_analyses:
+            if analysis.repo_name in {".", ".."} or Path(analysis.repo_name).name != analysis.repo_name:
+                raise ValueError("Repository name must be a single directory name")
         
         # Setup directory structure
         self._setup_docs_structure()
@@ -157,6 +163,13 @@ class DocumentationGenerator:
                 f.write(content)
             
             generated_files["individual"].append(str(repo_file))
+
+        index_file = self.docs_dir / "repositories" / "index.md"
+        index_file.write_text(
+            "# Repositories\n\n" + "\n".join(
+                f"- [{a.repo_name}]({a.repo_name}.md)" for a in analyses
+            ) + "\n", encoding="utf-8",
+        )
         
         # Generate language-based organization
         language_groups = self._group_analyses_by_language(analyses)
@@ -170,7 +183,7 @@ class DocumentationGenerator:
                 total_elements=sum(len(r.all_elements) for r in repos),
             )
             
-            lang_file = self.docs_dir / "repositories" / "by_language" / f"{language}.md"
+            lang_file = self.docs_dir / "repositories" / "by_language" / f"{sanitize_filename(language)}.md"
             with open(lang_file, 'w', encoding='utf-8') as f:
                 f.write(content)
             
@@ -417,172 +430,46 @@ class DocumentationGenerator:
     
     def _generate_mkdocs_config(self) -> str:
         """Generate MkDocs configuration file."""
-        config_template = self.jinja_env.get_template("mkdocs.yml")
-        
-        config_content = config_template.render(
-            site_name=config.docs_site_name,
-            site_description=config.docs_site_description,
-            theme=config.docs_theme,
-        )
-        
-        config_file = self.docs_dir / "mkdocs.yml"
+        import yaml
+        config_content = yaml.safe_dump({
+            "site_name": config.docs_site_name,
+            "site_description": config.docs_site_description,
+            "docs_dir": self.docs_dir.name,
+            "site_dir": f"{self.docs_dir.name}_site",
+            "theme": {"name": config.docs_theme},
+            "nav": [
+                {"Home": "index.md"},
+                {"Repositories": "repositories/index.md"},
+                {"Functions": "api_reference/methods/index.md"},
+                {"Classes": "api_reference/classes/index.md"},
+                {"Modules": "api_reference/modules/index.md"},
+                {"Functionality": "analysis/functionality_matrix.md"},
+                {"Dependencies": "analysis/dependencies.md"},
+                {"Metrics": "analysis/metrics.md"},
+            ],
+            "markdown_extensions": ["tables", "admonition", "toc"],
+        }, sort_keys=False)
+
+        config_file = self.docs_dir.parent / f"{self.docs_dir.name}.mkdocs.yml"
         with open(config_file, 'w', encoding='utf-8') as f:
             f.write(config_content)
         
         return str(config_file)
     
     def _create_default_templates(self, template_dir: Path) -> None:
-        """Create default Jinja2 templates."""
-        templates = {
-            "main_index.md": """# {{ org_info.name or "Palantir" }} Open Source Ecosystem
+        """Copy bundled templates into a caller-owned directory without overwriting."""
+        source_dir = Path(__file__).parent / "templates"
+        template_dir.mkdir(parents=True, exist_ok=True)
+        for source in source_dir.glob("*.md"):
+            if source.name in {"AGENTS.md", "README.md"}:
+                continue
+            destination = template_dir / source.name
+            if not destination.exists():
+                shutil.copyfile(source, destination)
+        destination = template_dir / "mkdocs.yml"
+        if not destination.exists():
+            destination.write_text("site_name: Opentir\n", encoding="utf-8")
 
-Welcome to the comprehensive documentation for Palantir's open source ecosystem.
-
-## Overview
-
-- **Total Repositories**: {{ total_repositories }}
-- **Total Files Analyzed**: {{ total_files:,}}
-- **Total Lines of Code**: {{ total_lines:,}}
-- **Generated**: {{ generation_date }}
-
-## Top Programming Languages
-
-{% for language, count in top_languages %}
-- **{{ language.title() }}**: {{ count }} files
-{% endfor %}
-
-## Popular Repositories
-
-{% for repo in popular_repositories %}
-- [{{ repo.repo_name }}](repositories/{{ repo.repo_name }}.md) - {{ repo.total_files }} files, {{ repo.total_lines:,}} lines
-{% endfor %}
-
-## Navigation
-
-- [Repository Documentation](repositories/)
-- [Functionality Matrix](analysis/functionality_matrix.md)
-- [API Reference](api_reference/)
-- [Analysis Reports](analysis/)
-""",
-            
-            "repository_detail.md": """# {{ repo.repo_name }}
-
-## Overview
-
-- **Total Files**: {{ repo.total_files }}
-- **Total Lines**: {{ repo.total_lines:,}}
-- **Languages**: {{ repo.languages.keys()|list|join(", ") }}
-
-## Functionality Summary
-
-- **Total Elements**: {{ repo.functionality_summary.total_elements }}
-- **Public Methods**: {{ repo.functionality_summary.public_methods|length }}
-- **Classes**: {{ repo.functionality_summary.classes|length }}
-- **Async Functions**: {{ repo.functionality_summary.async_functions|length }}
-
-## Top Elements
-
-{% for element_type, elements in top_elements.items() %}
-### {{ element_type.title() }}
-
-{% for element in elements[:10] %}
-- **{{ element.name }}** ({{ element.file }}) - Complexity: {{ element.complexity }}
-  {% if element.docstring %}
-  > {{ element.docstring[:100] }}...
-  {% endif %}
-{% endfor %}
-
-{% endfor %}
-
-## Metrics
-
-- **Average File Complexity**: {{ "%.2f"|format(repo.metrics.average_file_complexity or 0) }}
-- **Documentation Ratio**: {{ "%.1f"|format((repo.metrics.documentation_ratio or 0) * 100) }}%
-""",
-            
-            "functionality_matrix.md": """# Comprehensive Functionality Matrix
-
-## Global Overview
-
-- **Total Repositories**: {{ total_repositories }}
-- **Total Languages**: {{ global_summary.languages|length }}
-- **Generated**: {{ generation_date }}
-
-## Repository Comparison
-
-| Repository | Languages | Files | Lines | Elements | Public Methods | Classes | Complexity |
-|------------|-----------|-------|-------|----------|----------------|---------|------------|
-{% for repo in functionality_table %}
-| {{ repo.repository }} | {{ repo.languages|join(", ") }} | {{ repo.total_files }} | {{ repo.total_lines:,}} | {{ repo.total_elements }} | {{ repo.public_methods }} | {{ repo.classes }} | {{ repo.complexity }} |
-{% endfor %}
-
-## Method Frequency Analysis
-
-### Most Common Methods
-
-{% for method, count in method_analysis.most_common_methods[:20] %}
-- **{{ method }}**: Used {{ count }} times
-{% endfor %}
-
-### Method Distribution
-
-- **Unique Methods**: {{ method_analysis.method_distribution.unique_methods:,}}
-- **Methods Used Once**: {{ method_analysis.method_distribution.methods_used_once:,}}
-- **Methods Used 5+ Times**: {{ method_analysis.method_distribution.methods_used_5_plus:,}}
-- **Methods Used 10+ Times**: {{ method_analysis.method_distribution.methods_used_10_plus:,}}
-
-### Common Naming Patterns
-
-{% for pattern in method_analysis.common_patterns %}
-- **{{ pattern.pattern }}**: {{ pattern.count }} occurrences
-{% endfor %}
-""",
-            
-            "mkdocs.yml": """site_name: {{ site_name }}
-site_description: {{ site_description }}
-
-theme:
-  name: {{ theme }}
-  features:
-    - navigation.tabs
-    - navigation.sections
-    - toc.integrate
-    - search.suggest
-    - search.highlight
-
-plugins:
-  - search
-  - awesome-pages
-
-nav:
-  - Home: index.md
-  - Repositories:
-    - Overview: repositories/
-    - By Language: repositories/by_language/
-    - By Category: repositories/by_category/
-  - API Reference:
-    - Methods: api_reference/methods/
-    - Classes: api_reference/classes/
-    - Modules: api_reference/modules/
-  - Analysis:
-    - Functionality Matrix: analysis/functionality_matrix.md
-    - Dependencies: analysis/dependencies.md
-    - Metrics: analysis/metrics.md
-
-markdown_extensions:
-  - toc:
-      permalink: true
-  - tables
-  - admonition
-  - codehilite
-"""
-        }
-        
-        for template_name, content in templates.items():
-            template_file = template_dir / template_name
-            if not template_file.exists():
-                with open(template_file, 'w', encoding='utf-8') as f:
-                    f.write(content)
     
     def _get_top_elements_for_display(self, elements: List[CodeElement]) -> Dict[str, List[Dict[str, Any]]]:
         """Get top elements organized by type for display."""
@@ -642,11 +529,20 @@ markdown_extensions:
     
     def _analyze_dependencies(self, analyses: List[RepositoryAnalysis]) -> Dict[str, Any]:
         """Analyze dependencies across all repositories."""
-        # This would be enhanced to actually analyze dependencies from file analyses
+        from collections import Counter
+        counts = Counter()
+        dependency_graph = {}
+        for analysis in analyses:
+            dependencies = sorted({
+                dependency for file in analysis.file_analyses
+                for dependency in file.dependencies
+            })
+            dependency_graph[analysis.repo_name] = dependencies
+            counts.update(dependencies)
         return {
-            "common_dependencies": ["react", "typescript", "python", "java"],
-            "dependency_graph": {},
-            "analysis_placeholder": "Dependency analysis implementation needed",
+            "common_dependencies": [name for name, _ in counts.most_common(20)],
+            "dependency_counts": dict(counts),
+            "dependency_graph": dependency_graph,
         }
     
     def _analyze_metrics(self, analyses: List[RepositoryAnalysis]) -> Dict[str, Any]:
@@ -675,4 +571,4 @@ markdown_extensions:
             "total_lines_analyzed": sum(a.total_lines for a in analyses),
             "total_elements_extracted": sum(len(a.all_elements) for a in analyses),
             "generation_timestamp": datetime.now().isoformat(),
-        } 
+        }

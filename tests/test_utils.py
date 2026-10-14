@@ -62,6 +62,7 @@ class TestConfigManager:
             }
             import json
             json.dump(config_data, f)
+            f.flush()
             yield f.name
         
         # Cleanup
@@ -214,8 +215,8 @@ class TestFileUtils:
     
     def test_get_file_hash_nonexistent(self):
         """Test hash calculation for non-existent file."""
-        file_hash = FileUtils.get_file_hash("nonexistent.txt")
-        assert file_hash == ""
+        with pytest.raises(FileNotFoundError):
+            FileUtils.get_file_hash("nonexistent.txt")
     
     def test_get_file_size_mb(self, temp_directory):
         """Test file size calculation."""
@@ -463,4 +464,4 @@ class TestUtilityFunctions:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__]) 
+    pytest.main([__file__])

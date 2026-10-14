@@ -123,6 +123,9 @@ async def update_all_palantir_repos(
             logger.info("\n🔍 Step 3: Validating repository integrity...")
             validation_results = await validate_all_repositories(orchestrator)
             results["validation_results"] = validation_results
+            if validation_results.get("invalid_count", 0):
+                results["error"] = "Repository validation failed"
+                return results
             
             logger.info(f"✅ Validation complete:")
             logger.info(f"   - Valid repositories: {validation_results.get('valid_count', 0)}")
@@ -146,6 +149,8 @@ async def update_all_palantir_repos(
             except Exception as e:
                 logger.warning(f"⚠️  Analysis check failed: {e}")
                 results["analysis_results"] = {"error": str(e)}
+                results["error"] = "Analysis validation failed"
+                return results
         
         results["success"] = True
         

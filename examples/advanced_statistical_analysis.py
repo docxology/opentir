@@ -1501,7 +1501,7 @@ async def run_advanced_analysis():
     if not (repos_dir / "all_repos").exists():
         print("❌ No repositories found. Please run the main analysis first:")
         print("   python main.py")
-        return
+        raise SystemExit(1)
     
     try:
         # Step 1: Collect comprehensive metrics
@@ -1510,7 +1510,7 @@ async def run_advanced_analysis():
         
         if df.empty:
             print("❌ No data collected. Please check repository structure.")
-            return
+            raise SystemExit(1)
         
         print(f"✅ Collected metrics for {len(df)} files")
         
@@ -1549,7 +1549,8 @@ async def run_advanced_analysis():
     except Exception as e:
         print(f"\n❌ Error during analysis: {e}")
         analyzer.logger.error(f"Analysis failed: {e}")
+        raise
 
 
 if __name__ == "__main__":
-    asyncio.run(run_advanced_analysis()) 
+    asyncio.run(run_advanced_analysis())

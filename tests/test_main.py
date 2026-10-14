@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch, AsyncMock, MagicMock
 from datetime import datetime
 
 from src.main import OpentirOrchestrator, build_complete_ecosystem, get_workspace_status
-from src.code_analyzer import RepositoryAnalysis
+from src.code_analyzer import RepositoryAnalysis, CodeElement
 from src.utils import RepositoryInfo
 
 
@@ -32,15 +32,8 @@ class TestOpentirOrchestrator:
     @pytest.fixture
     def mock_analysis(self):
         """Create mock repository analysis."""
-        mock_analysis = Mock(spec=RepositoryAnalysis)
-        mock_analysis.repo_name = "test-repo"
-        mock_analysis.total_files = 10
-        mock_analysis.total_lines = 1000
-        mock_analysis.languages = {"python": 8, "javascript": 2}
-        mock_analysis.all_elements = [Mock(), Mock(), Mock()]  # 3 elements
-        mock_analysis.functionality_summary = {"total_elements": 3}
-        mock_analysis.metrics = {"complexity": 50}
-        return mock_analysis
+        elements = [CodeElement(f"function_{i}", "function", "python", "main.py", i + 1, "", [], "", 1, True, False) for i in range(3)]
+        return RepositoryAnalysis("test-repo", 10, 1000, {"python": 8, "javascript": 2}, [], elements, {"total_elements": 3}, {"complexity": 50})
     
     def test_initialization(self, temp_base_dir):
         """Test OpentirOrchestrator initialization."""
@@ -234,7 +227,7 @@ class TestOpentirOrchestrator:
         (repos_dir / "test-repo").mkdir()
         
         docs_dir = orchestrator.base_dir / "docs"
-        docs_dir.mkdir()
+        docs_dir.mkdir(exist_ok=True)
         (docs_dir / "index.md").write_text("# Test")
         (docs_dir / "mkdocs.yml").write_text("site_name: Test")
         
@@ -291,7 +284,7 @@ class TestOpentirOrchestrator:
     def test_get_documentation_status_generated(self, orchestrator):
         """Test documentation status when generated."""
         docs_dir = orchestrator.base_dir / "docs"
-        docs_dir.mkdir()
+        docs_dir.mkdir(exist_ok=True)
         (docs_dir / "index.md").write_text("# Test")
         (docs_dir / "mkdocs.yml").write_text("site_name: Test")
         
@@ -382,9 +375,9 @@ class TestErrorHandling:
     """Test error handling in orchestrator."""
     
     @pytest.fixture
-    def orchestrator_with_errors(self, temp_base_dir):
+    def orchestrator_with_errors(self, tmp_path):
         """Create orchestrator for error testing."""
-        return OpentirOrchestrator(base_dir=temp_base_dir)
+        return OpentirOrchestrator(base_dir=tmp_path)
     
     @pytest.mark.asyncio
     async def test_analyze_repositories_no_directory(self, orchestrator_with_errors):
@@ -407,4 +400,4 @@ class TestErrorHandling:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__]) 
+    pytest.main([__file__])

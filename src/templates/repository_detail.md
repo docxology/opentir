@@ -3,7 +3,7 @@
 ## Overview
 
 - **Total Files**: {{ repo.total_files }}
-- **Total Lines**: {{ repo.total_lines:,}}
+- **Total Lines**: {{ "{:,}".format(repo.total_lines) }}
 - **Languages**: {{ repo.languages.keys()|list|join(", ") }}
 
 ## Functionality Summary

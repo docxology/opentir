@@ -28,14 +28,14 @@ class Logger:
     
     def _setup_logger(self) -> None:
         """Set up logging with both console and file handlers."""
-        ensure_directories()
-        
         # Create logger
         self.logger = logging.getLogger(self.name)
         self.logger.setLevel(getattr(logging, config.log_level.upper()))
         
         # Clear existing handlers
-        self.logger.handlers.clear()
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+            handler.close()
         
         # Console handler with Rich formatting
         console_handler = RichHandler(
@@ -46,41 +46,43 @@ class Logger:
         )
         console_handler.setLevel(logging.INFO)
         
-        # File handler
-        log_file = config.base_dir / config.logs_dir / f"{self.name}.log"
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        
         # Formatters
         console_formatter = logging.Formatter("%(message)s")
-        file_formatter = logging.Formatter(config.log_format)
         
         console_handler.setFormatter(console_formatter)
-        file_handler.setFormatter(file_formatter)
         
         # Add handlers
         self.logger.addHandler(console_handler)
-        self.logger.addHandler(file_handler)
+
+    def _log(self, level: int, message: str, **kwargs) -> None:
+        if not any(isinstance(handler, logging.FileHandler) for handler in self.logger.handlers):
+            log_directory = config.base_dir / config.logs_dir
+            log_directory.mkdir(parents=True, exist_ok=True)
+            handler = logging.FileHandler(log_directory / f"{self.name}.log", encoding="utf-8")
+            handler.setLevel(logging.DEBUG)
+            handler.setFormatter(logging.Formatter(config.log_format))
+            self.logger.addHandler(handler)
+        self.logger.log(level, message, **kwargs)
     
     def info(self, message: str, **kwargs) -> None:
         """Log info message."""
-        self.logger.info(message, **kwargs)
+        self._log(logging.INFO, message, **kwargs)
     
     def debug(self, message: str, **kwargs) -> None:
         """Log debug message.""" 
-        self.logger.debug(message, **kwargs)
+        self._log(logging.DEBUG, message, **kwargs)
     
     def warning(self, message: str, **kwargs) -> None:
         """Log warning message."""
-        self.logger.warning(message, **kwargs)
+        self._log(logging.WARNING, message, **kwargs)
     
     def error(self, message: str, **kwargs) -> None:
         """Log error message."""
-        self.logger.error(message, **kwargs)
+        self._log(logging.ERROR, message, **kwargs)
     
     def critical(self, message: str, **kwargs) -> None:
         """Log critical message."""
-        self.logger.critical(message, **kwargs)
+        self._log(logging.CRITICAL, message, **kwargs)
     
     def progress(self, description: str = "Processing..."):
         """Create a progress bar context manager."""
@@ -177,7 +179,8 @@ class FileUtils:
         """Check if file is a text file."""
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
-                f.read(1024)
+                if '\x00' in f.read(1024):
+                    return False
             return True
         except (UnicodeDecodeError, IOError):
             return False
@@ -210,11 +213,13 @@ class AsyncUtils:
     @staticmethod
     async def retry_async(func, max_retries: int = 3, delay: float = 1.0, *args, **kwargs):
         """Retry async function with exponential backoff."""
-        for attempt in range(max_retries):
+        if max_retries < 0:
+            raise ValueError("max_retries must be nonnegative")
+        for attempt in range(max_retries + 1):
             try:
                 return await func(*args, **kwargs)
             except Exception as e:
-                if attempt == max_retries - 1:
+                if attempt == max_retries:
                     raise e
                 await asyncio.sleep(delay * (2 ** attempt))
 
@@ -260,6 +265,8 @@ class DataUtils:
 
 def format_bytes(bytes_value: int) -> str:
     """Format bytes into human readable string."""
+    if bytes_value < 1024:
+        return f"{bytes_value} B"
     for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
         if bytes_value < 1024.0:
             return f"{bytes_value:.1f} {unit}"
@@ -268,21 +275,20 @@ def format_bytes(bytes_value: int) -> str:
 
 def format_duration(seconds: float) -> str:
     """Format duration in seconds to human readable string."""
-    if seconds < 60:
-        return f"{seconds:.1f}s"
-    elif seconds < 3600:
-        minutes = seconds / 60
-        return f"{minutes:.1f}m"
-    else:
-        hours = seconds / 3600
-        return f"{hours:.1f}h"
+    minutes, remainder = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m {remainder}s"
+    if minutes:
+        return f"{minutes}m {remainder}s"
+    return f"{remainder}s"
 
 def sanitize_filename(filename: str) -> str:
     """Sanitize filename for cross-platform compatibility."""
-    invalid_chars = '<>:"/\\|?*'
+    invalid_chars = '<>:"/\\|?*\' '
     for char in invalid_chars:
         filename = filename.replace(char, '_')
     return filename[:255]  # Limit filename length
 
 # Global logger instance
-logger = Logger() 
+logger = Logger()

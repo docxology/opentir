@@ -48,7 +48,7 @@ async def main():
             print("  ❌ No repositories found in 'repos' directory.")
             print("  💡 Run the full workflow first to download repositories:")
             print("     python -c \"from src.main import OpentirOrchestrator; import asyncio; asyncio.run(OpentirOrchestrator().run_workflow())\"")
-            return
+            sys.exit(1)
         
         # Count existing repositories
         existing_repos = list(repos_dir.rglob("*/.git"))
@@ -115,4 +115,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

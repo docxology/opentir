@@ -40,13 +40,13 @@ class MultiRepositoryAnalyzer:
     Provides cross-repository insights, patterns, and visualizations.
     """
     
-    def __init__(self, repos_base_path: Path = None):
+    def __init__(self, repos_base_path: Path = None, output_dir: Path = None):
         """Initialize multi-repository analyzer."""
         self.repos_base_path = repos_base_path or Path(config.base_dir) / config.repos_dir
         self.logger = Logger("multi_repo_analyzer")
         self.analyzer = CodeAnalyzer()
-        self.output_dir = Path(config.base_dir) / "multi_repo_analysis"
-        self.output_dir.mkdir(exist_ok=True)
+        self.output_dir = output_dir or self.repos_base_path.parent / "multi_repo_analysis"
+        self.output_dir.mkdir(parents=True, exist_ok=True)
         
     def analyze_all_repositories(self, force_reanalyze: bool = False) -> CrossRepoMetrics:
         """
@@ -70,7 +70,7 @@ class MultiRepositoryAnalyzer:
                 cached_metrics = CrossRepoMetrics(**cached_data)
                 
                 # Only use cached data if it has a reasonable number of repositories
-                if cached_metrics.total_repositories > 10:
+                if cached_metrics.total_repositories > 0:
                     return cached_metrics
                 else:
                     self.logger.info(f"Cached analysis only has {cached_metrics.total_repositories} repositories, running fresh analysis")
@@ -94,11 +94,6 @@ class MultiRepositoryAnalyzer:
                     self.logger.info(f"Analyzing repository {i}/{len(repo_paths)}: {repo_path.name}")
                 
                 # Skip if repo is too small or likely empty
-                code_files = self._count_code_files(repo_path)
-                if code_files < 1:
-                    self.logger.debug(f"Skipping {repo_path.name}: no code files found")
-                    continue
-                
                 analysis = self.analyzer.analyze_repository(repo_path)
                 if analysis and analysis.total_files > 0:
                     repository_analyses.append(analysis)
@@ -139,37 +134,7 @@ class MultiRepositoryAnalyzer:
         if not all_repos_dir.exists():
             raise ValueError(f"Repository directory does not exist: {all_repos_dir}")
         
-        return [path for path in all_repos_dir.iterdir() if path.is_dir() and not path.name.startswith('.')]
-    
-    def _count_code_files(self, repo_path: Path) -> int:
-        """Count the number of code files in a repository."""
-        code_extensions = {'.py', '.js', '.ts', '.java', '.go', '.cpp', '.c', '.h', '.hpp', '.rs', '.rb', '.php', '.scala', '.kt', '.swift', '.dart', '.r', '.R', '.jl', '.pl', '.sh', '.bash', '.zsh', '.fish', '.ps1', '.bat', '.cmd', '.yaml', '.yml', '.json', '.xml', '.toml', '.ini', '.cfg', '.conf', '.properties', '.gradle', '.groovy', '.sbt', '.pom', '.gemspec', '.podspec', '.dockerfile', '.makefile', '.cmake', '.sql', '.html', '.css', '.scss', '.sass', '.less', '.vue', '.jsx', '.tsx', '.svelte', '.elm', '.hs', '.clj', '.cljs', '.ml', '.mli', '.fs', '.fsi', '.fsx', '.vb', '.cs', '.fs', '.ps1', '.psm1', '.psd1', '.lua', '.tcl', '.awk', '.sed', '.vim', '.tex', '.md', '.rst', '.txt'}
-        
-        try:
-            count = 0
-            for file_path in repo_path.rglob("*"):
-                if (file_path.is_file() and 
-                    file_path.suffix.lower() in code_extensions and
-                    not self._should_skip_file_path(file_path)):
-                    count += 1
-                    if count >= 5:  # Early exit if we find enough files
-                        break
-            return count
-        except Exception:
-            return 0
-    
-    def _should_skip_file_path(self, file_path: Path) -> bool:
-        """Check if file path should be skipped during analysis."""
-        skip_patterns = [
-            ".git/", "node_modules/", "__pycache__/", ".pytest_cache/",
-            "build/", "dist/", "target/", ".gradle/", "vendor/", "venv/",
-            ".venv/", ".env/", ".tox/", ".coverage/", ".mypy_cache/",
-            ".DS_Store", "Thumbs.db", ".idea/", ".vscode/", "*.log",
-            "*.tmp", "*.temp", "*.bak", "*.swp", "*.swo"
-        ]
-        
-        path_str = str(file_path)
-        return any(pattern in path_str for pattern in skip_patterns)
+        return sorted(path for path in all_repos_dir.iterdir() if path.is_dir() and not path.name.startswith('.'))
     
     def _generate_cross_repo_metrics(self, analyses: List[RepositoryAnalysis]) -> CrossRepoMetrics:
         """Generate comprehensive cross-repository metrics."""
@@ -580,11 +545,24 @@ class MultiRepositoryAnalyzer:
     def _create_activity_timeline(self, viz_dir: Path) -> Path:
         """Create repository activity timeline."""
         plt.figure(figsize=(12, 6))
-        
-        # This is a placeholder - in a real implementation, you'd analyze git history
-        plt.text(0.5, 0.5, 'Repository Activity Timeline\n(Would require git history analysis)', 
-                ha='center', va='center', transform=plt.gca().transAxes, fontsize=14)
-        plt.title('Repository Activity Timeline', fontsize=16)
+        from git import Repo, InvalidGitRepositoryError, NoSuchPathError
+        dates = Counter()
+        for path in self._get_all_repository_paths():
+            try:
+                with Repo(path) as repository:
+                    if repository.head.is_valid():
+                        dates[repository.head.commit.committed_datetime.date().isoformat()] += 1
+            except (InvalidGitRepositoryError, NoSuchPathError):
+                continue
+        if dates:
+            labels = sorted(dates)
+            plt.bar(labels, [dates[label] for label in labels])
+            plt.xticks(rotation=45, ha='right')
+            plt.ylabel('Repositories')
+        else:
+            plt.text(0.5, 0.5, 'No local Git commit dates available',
+                     ha='center', va='center', transform=plt.gca().transAxes)
+        plt.title('Latest checked-out commit dates (not full history)', fontsize=14)
         
         output_path = viz_dir / "activity_timeline.png"
         plt.tight_layout()
@@ -1213,36 +1191,35 @@ class MultiRepositoryAnalyzer:
             elements = np.array([r["element_count"] for r in size_data])
             
             # Remove zeros/NaN
-            valid_indices = (complexity > 0) & (lines > 0) & (elements > 0)
+            valid_indices = (
+                (complexity > 0) & (lines > 0) & (elements > 0)
+                & np.isfinite(complexity) & np.isfinite(lines) & np.isfinite(elements)
+            )
             
             if np.sum(valid_indices) > 2:
                 lines_valid = lines[valid_indices]
                 complexity_valid = complexity[valid_indices]
                 elements_valid = elements[valid_indices]
                 
-                # Calculate Pearson correlation
-                try:
-                    corr_lines_complexity, p_lines = pearsonr(lines_valid, complexity_valid)
-                    corr_elements_complexity, p_elements = pearsonr(elements_valid, complexity_valid)
-                    
-                    correlations = {
-                        "lines_vs_complexity": {
-                            "correlation": float(corr_lines_complexity),
-                            "p_value": float(p_lines),
-                            "significant": p_lines < 0.05
-                        },
-                        "elements_vs_complexity": {
-                            "correlation": float(corr_elements_complexity),
-                            "p_value": float(p_elements),
-                            "significant": p_elements < 0.05
+                for name, values in (
+                    ("lines_vs_complexity", lines_valid),
+                    ("elements_vs_complexity", elements_valid),
+                ):
+                    if np.ptp(values) == 0 or np.ptp(complexity_valid) == 0:
+                        correlations[name] = {
+                            "correlation": None, "p_value": None,
+                            "significant": False, "reason": "constant_input",
                         }
-                    }
-                except Exception as e:
-                    self.logger.debug(f"Error calculating correlations: {e}")
-                    correlations = {"error": str(e)}
+                    else:
+                        coefficient, probability = pearsonr(values, complexity_valid)
+                        correlations[name] = {
+                            "correlation": float(coefficient),
+                            "p_value": float(probability),
+                            "significant": bool(probability < 0.05),
+                        }
         
         return {
             "correlations": correlations,
             "data_points": len(size_data),
             "analysis_method": "size_complexity_correlation_analysis"
-        } 
+        }

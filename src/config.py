@@ -6,26 +6,30 @@ Manages settings, constants, and configuration loading.
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional
-from pydantic import Field
-from pydantic_settings import BaseSettings
+from pydantic import Field, AliasChoices
+from pydantic_settings import BaseSettings, SettingsConfigDict
 import json
 
 class OpentirConfig(BaseSettings):
     """Main configuration class for Opentir package."""
     
     # GitHub API settings
-    github_token: Optional[str] = Field(None, env="GITHUB_TOKEN")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore",
+        validate_assignment=True,
+    )
+    github_token: Optional[str] = Field(None, validation_alias=AliasChoices("github_token", "GITHUB_TOKEN"))
     github_org: str = "palantir"
     github_api_url: str = "https://api.github.com"
     
     # Rate limiting settings
     requests_per_hour: int = 5000
-    max_concurrent_requests: int = 10
+    max_concurrent_requests: int = Field(10, gt=0)
     retry_attempts: int = 3
     retry_delay: float = 1.0
     
     # Directory structure settings
-    base_dir: Path = Path.cwd()
+    base_dir: Path = Field(default_factory=Path.cwd)
     repos_dir: str = "repos"
     docs_dir: str = "docs"
     cache_dir: str = ".cache"
@@ -49,10 +53,6 @@ class OpentirConfig(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-
 # Global configuration instance
 config = OpentirConfig()
 
@@ -110,13 +110,16 @@ DOCS_TEMPLATE_STRUCTURE = {
 
 def get_config_dict() -> Dict[str, Any]:
     """Get configuration as dictionary for easy access."""
-    return config.dict()
+    return config.model_dump()
 
 def update_config(**kwargs) -> None:
     """Update configuration values."""
-    for key, value in kwargs.items():
-        if hasattr(config, key):
-            setattr(config, key, value)
+    unknown = set(kwargs) - set(OpentirConfig.model_fields)
+    if unknown:
+        raise ValueError(f"Unknown configuration fields: {', '.join(sorted(unknown))}")
+    validated = OpentirConfig.model_validate(config.model_dump() | kwargs)
+    for key in OpentirConfig.model_fields:
+        setattr(config, key, getattr(validated, key))
 
 def ensure_directories() -> None:
     """Ensure all required directories exist."""
@@ -146,4 +149,4 @@ def save_config_to_file(config_path: str) -> None:
             config_data[key] = str(value)
     
     with open(config_path, 'w') as f:
-        json.dump(config_data, f, indent=2) 
+        json.dump(config_data, f, indent=2)

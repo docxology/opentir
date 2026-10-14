@@ -12,7 +12,7 @@ from typing import Dict, List, Any, Optional, Set, Tuple
 from dataclasses import dataclass, asdict
 from collections import defaultdict
 
-from .config import config, SUPPORTED_FILE_EXTENSIONS
+from .config import config, SUPPORTED_FILE_EXTENSIONS, MAX_FILE_SIZE_MB
 from .utils import Logger, FileUtils
 
 @dataclass
@@ -119,7 +119,7 @@ class CodeAnalyzer:
         """
         self.logger.info(f"Analyzing repository: {repo_path.name}")
         
-        if not repo_path.exists():
+        if not repo_path.is_dir():
             raise ValueError(f"Repository path does not exist: {repo_path}")
         
         # Initialize analysis results
@@ -144,8 +144,8 @@ class CodeAnalyzer:
                     total_files += 1
                     total_lines += file_analysis.lines_of_code
                     
-            except Exception as e:
-                self.logger.debug(f"Error analyzing {file_path}: {e}")
+            except (OSError, UnicodeError) as e:
+                self.logger.warning(f"Error analyzing {file_path}: {e}")
                 continue
         
         # Generate functionality summary
@@ -169,19 +169,28 @@ class CodeAnalyzer:
         """Get list of files that can be analyzed."""
         analyzable_files = []
         
-        for file_path in repo_path.rglob("*"):
-            if (file_path.is_file() and 
-                not self._should_skip_file(file_path) and
-                FileUtils.get_language_from_extension(file_path)):
-                analyzable_files.append(file_path)
-        
+        excluded = {".git", "node_modules", "__pycache__", ".pytest_cache", "build", "dist", "target", ".gradle", "vendor", ".venv", "venv", ".cache"}
+        for root, directories, files in os.walk(repo_path, followlinks=False):
+            directories[:] = sorted(name for name in directories if name not in excluded)
+            relative_parts = Path(root).relative_to(repo_path).parts
+            if not config.include_tests and any(part.lower() in {"test", "tests", "__tests__"} for part in relative_parts):
+                directories[:] = []
+                continue
+            if not config.include_examples and any(part.lower() in {"example", "examples"} for part in relative_parts):
+                directories[:] = []
+                continue
+            for name in sorted(files):
+                file_path = Path(root) / name
+                if not file_path.is_symlink() and FileUtils.get_language_from_extension(file_path):
+                    if file_path.stat().st_size <= MAX_FILE_SIZE_MB * 1024 * 1024:
+                        analyzable_files.append(file_path)
         return analyzable_files
     
     def _should_skip_file(self, file_path: Path) -> bool:
         """Check if file should be skipped during analysis."""
         skip_patterns = [
             ".git/", "node_modules/", "__pycache__/", ".pytest_cache/",
-            "build/", "dist/", "target/", ".gradle/", "vendor/"
+            "build/", "dist/", "target/", ".gradle/", "vendor/", ".venv/", "venv/", ".cache/"
         ]
         
         path_str = str(file_path)
@@ -193,7 +202,7 @@ class CodeAnalyzer:
             if not FileUtils.is_text_file(file_path):
                 return None
             
-            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+            with open(file_path, 'r', encoding='utf-8') as f:
                 content = f.read()
             
             parser = self.parsers.get(language)
@@ -216,8 +225,8 @@ class CodeAnalyzer:
                 complexity_score=complexity_score,
             )
             
-        except Exception as e:
-            self.logger.debug(f"Error analyzing file {file_path}: {e}")
+        except (OSError, UnicodeError) as e:
+            self.logger.warning(f"Error analyzing file {file_path}: {e}")
             return None
     
     def _calculate_file_complexity(self, elements: List[CodeElement]) -> int:
@@ -450,12 +459,22 @@ class PythonParser(LanguageParser):
         
         try:
             tree = ast.parse(content)
+            method_nodes = {
+                id(child) for parent in ast.walk(tree) if isinstance(parent, ast.ClassDef)
+                for child in parent.body if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))
+            }
             
             for node in ast.walk(tree):
                 if isinstance(node, ast.FunctionDef):
-                    elements.append(self._create_function_element(node, file_path))
+                    element = self._create_function_element(node, file_path)
+                    if id(node) in method_nodes:
+                        element.type = "method"
+                    elements.append(element)
                 elif isinstance(node, ast.AsyncFunctionDef):
-                    elements.append(self._create_async_function_element(node, file_path))
+                    element = self._create_async_function_element(node, file_path)
+                    if id(node) in method_nodes:
+                        element.type = "method"
+                    elements.append(element)
                 elif isinstance(node, ast.ClassDef):
                     elements.append(self._create_class_element(node, file_path))
         
@@ -473,8 +492,10 @@ class PythonParser(LanguageParser):
             file_path=file_path,
             line_number=node.lineno,
             docstring=ast.get_docstring(node) or "",
-            parameters=[arg.arg for arg in node.args.args],
-            return_type="",  # Could be enhanced with type annotations
+            parameters=[arg.arg for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs]
+            + (["*" + node.args.vararg.arg] if node.args.vararg else [])
+            + (["**" + node.args.kwarg.arg] if node.args.kwarg else []),
+            return_type=ast.unparse(node.returns) if node.returns else "",
             complexity=self._calculate_complexity(node),
             is_public=not node.name.startswith('_'),
             is_async=False,
@@ -489,8 +510,10 @@ class PythonParser(LanguageParser):
             file_path=file_path,
             line_number=node.lineno,
             docstring=ast.get_docstring(node) or "",
-            parameters=[arg.arg for arg in node.args.args],
-            return_type="",
+            parameters=[arg.arg for arg in node.args.posonlyargs + node.args.args + node.args.kwonlyargs]
+            + (["*" + node.args.vararg.arg] if node.args.vararg else [])
+            + (["**" + node.args.kwarg.arg] if node.args.kwarg else []),
+            return_type=ast.unparse(node.returns) if node.returns else "",
             complexity=self._calculate_complexity(node),
             is_public=not node.name.startswith('_'),
             is_async=True,
@@ -751,4 +774,4 @@ class GoParser(LanguageParser):
     
     def extract_dependencies(self, content: str) -> List[str]:
         """Extract Go dependencies."""
-        return self.extract_imports(content) 
+        return self.extract_imports(content)

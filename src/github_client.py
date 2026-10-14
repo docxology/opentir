@@ -7,9 +7,10 @@ import asyncio
 import aiohttp
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
-from github import Github, Repository as GitHubRepo
+from github import Github, Auth, Repository as GitHubRepo
 from github.GithubException import GithubException, RateLimitExceededException
 import time
+from contextlib import nullcontext
 
 from .config import config, PALANTIR_ORG
 from .utils import Logger, RepositoryInfo, AsyncUtils
@@ -24,7 +25,7 @@ class GitHubClient:
         """Initialize GitHub client with optional token."""
         self.token = token or config.github_token
         self.logger = Logger("github_client")
-        self.github = Github(self.token) if self.token else Github()
+        self.github = Github(base_url=config.github_api_url, auth=Auth.Token(self.token)) if self.token else Github(base_url=config.github_api_url)
         self.session: Optional[aiohttp.ClientSession] = None
         
         # Rate limiting
@@ -34,7 +35,7 @@ class GitHubClient:
         
     async def __aenter__(self):
         """Async context manager entry."""
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60))
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -79,8 +80,9 @@ class GitHubClient:
             # Silently continue - rate limit checking is best effort
             pass
     
-    def get_organization_info(self, org_name: str = PALANTIR_ORG) -> Dict[str, Any]:
+    def get_organization_info(self, org_name: Optional[str] = None) -> Dict[str, Any]:
         """Get comprehensive organization information."""
+        org_name = org_name or config.github_org
         try:
             self._check_rate_limit()
             org = self.github.get_organization(org_name)
@@ -117,12 +119,13 @@ class GitHubClient:
             self.logger.error(f"Error fetching organization info: {e}")
             return {"error": "unknown_error", "message": str(e)}
     
-    def get_all_repositories(self, org_name: str = PALANTIR_ORG) -> List[RepositoryInfo]:
+    def get_all_repositories(self, org_name: Optional[str] = None) -> List[RepositoryInfo]:
         """
         Fetch all repositories for the organization.
         Returns comprehensive repository information.
         """
         repositories = []
+        org_name = org_name or config.github_org
         
         try:
             self.logger.info(f"Fetching repositories for organization: {org_name}")
@@ -194,7 +197,7 @@ class GitHubClient:
         if not self.session:
             raise RuntimeError("Client not initialized. Use async context manager.")
         
-        url = f"{config.github_api_url}/repos/{PALANTIR_ORG}/{repo_name}/contents/{path}"
+        url = f"{config.github_api_url}/repos/{config.github_org}/{repo_name}/contents/{path}"
         headers = {}
         
         if self.token:
@@ -217,7 +220,7 @@ class GitHubClient:
         if not self.session:
             raise RuntimeError("Client not initialized. Use async context manager.")
         
-        url = f"{config.github_api_url}/repos/{PALANTIR_ORG}/{repo_name}/languages"
+        url = f"{config.github_api_url}/repos/{config.github_org}/{repo_name}/languages"
         headers = {}
         
         if self.token:
@@ -239,7 +242,7 @@ class GitHubClient:
         if not self.session:
             raise RuntimeError("Client not initialized. Use async context manager.")
         
-        url = f"{config.github_api_url}/repos/{PALANTIR_ORG}/{repo_name}/contributors"
+        url = f"{config.github_api_url}/repos/{config.github_org}/{repo_name}/contributors"
         headers = {}
         
         if self.token:
@@ -261,7 +264,7 @@ class GitHubClient:
         if not self.session:
             raise RuntimeError("Client not initialized. Use async context manager.")
         
-        url = f"{config.github_api_url}/repos/{PALANTIR_ORG}/{repo_name}/releases"
+        url = f"{config.github_api_url}/repos/{config.github_org}/{repo_name}/releases"
         headers = {}
         
         if self.token:
@@ -282,7 +285,7 @@ class GitHubClient:
         """Get detailed repository information including README, dependencies, etc."""
         try:
             self._check_rate_limit()
-            repo = self.github.get_repo(f"{PALANTIR_ORG}/{repo_name}")
+            repo = self.github.get_repo(f"{config.github_org}/{repo_name}")
             
             detailed_info = {
                 "basic_info": self._extract_repository_info(repo),
@@ -446,7 +449,7 @@ class GitHubClient:
             self.logger.error("No repositories found")
             return []
         
-        async with self:
+        async with (self if self.session is None or self.session.closed else nullcontext(self)):
             # Fetch detailed information for each repository
             tasks = []
             semaphore = asyncio.Semaphore(config.max_concurrent_requests)
@@ -502,4 +505,4 @@ class GitHubClient:
                     "contributors": [],
                     "releases": [],
                     "content": {},
-                } 
+                }

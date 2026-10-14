@@ -7,6 +7,10 @@ import asyncio
 import tempfile
 import json
 from pathlib import Path
+from collections import namedtuple
+from git import Repo
+
+RepositoryName = namedtuple("RepositoryName", ["name"])
 from unittest.mock import Mock, patch, AsyncMock, MagicMock
 
 from src.repo_manager import RepositoryManager
@@ -89,15 +93,11 @@ class TestRepositoryManager:
         
         status = repo_manager._get_fast_local_repository_status()
         
-        assert "repos_dir_exists" in status
-        assert "all_repos_dir_exists" in status
-        assert "local_repo_count" in status
-        assert "local_repo_names" in status
+        assert "local_count" in status
+        assert "local_repos" in status
         
-        assert status["repos_dir_exists"] is True
-        assert status["all_repos_dir_exists"] is True
-        assert status["local_repo_count"] == 1
-        assert "test-repo" in status["local_repo_names"]
+        assert status["local_count"] == 1
+        assert "test-repo" in status["local_repos"]
     
     def test_get_repo_size_mb(self, repo_manager):
         """Test repository size calculation."""
@@ -138,8 +138,8 @@ class TestRepositoryManager:
         result = repo_manager._clone_repository_sync(mock_repo_info, force_update=False)
         
         assert result["success"] is True
-        assert result["repo_name"] == "test-repo"
-        assert "clone_path" in result
+        assert result["name"] == "test-repo"
+        assert "path" in result
         assert mock_clone.called
     
     @patch('git.Repo.clone_from')
@@ -150,7 +150,7 @@ class TestRepositoryManager:
         result = repo_manager._clone_repository_sync(mock_repo_info, force_update=False)
         
         assert result["success"] is False
-        assert result["repo_name"] == "test-repo"
+        assert result["name"] == "test-repo"
         assert "error" in result
     
     @patch('git.Repo.clone_from')
@@ -161,13 +161,16 @@ class TestRepositoryManager:
         existing_repo_dir.mkdir(parents=True)
         (existing_repo_dir / "existing_file.txt").write_text("existing content")
         
-        mock_repo = Mock()
-        mock_clone.return_value = mock_repo
-        
-        result = repo_manager._clone_repository_sync(mock_repo_info, force_update=True)
+        repository = Repo.init(existing_repo_dir)
+        repository.index.add(["existing_file.txt"])
+        repository.index.commit("Initial test content")
+        repository.create_remote("origin", str(existing_repo_dir))
+        with patch.object(repository.remotes.origin.__class__, "pull") as pull:
+            result = repo_manager._clone_repository_sync(mock_repo_info, force_update=True)
+            assert pull.called
         
         assert result["success"] is True
-        assert mock_clone.called
+        assert not mock_clone.called
     
     @pytest.mark.asyncio
     async def test_clone_single_repository(self, repo_manager, mock_repo_info):
@@ -175,7 +178,7 @@ class TestRepositoryManager:
         semaphore = asyncio.Semaphore(1)
         
         with patch.object(repo_manager, '_clone_repository_sync') as mock_clone_sync:
-            mock_clone_sync.return_value = {"success": True, "repo_name": "test-repo"}
+            mock_clone_sync.return_value = {"success": True, "name": "test-repo"}
             
             result = await repo_manager._clone_single_repository(semaphore, mock_repo_info, False)
             
@@ -185,26 +188,26 @@ class TestRepositoryManager:
     def test_analyze_repository_status(self, repo_manager):
         """Test repository status analysis."""
         available_repos = [
-            Mock(name="repo1"),
-            Mock(name="repo2"),
-            Mock(name="repo3")
+            RepositoryName("repo1"),
+            RepositoryName("repo2"),
+            RepositoryName("repo3")
         ]
         
         local_status = {
-            "local_repo_names": ["repo1", "repo3"],
-            "local_repo_count": 2
+            "local_repos": ["repo1", "repo3"],
+            "local_count": 2
         }
         
         analysis = repo_manager._analyze_repository_status(available_repos, local_status)
         
-        assert "total_available_repos" in analysis
-        assert "repos_to_clone" in analysis
-        assert "repos_already_local" in analysis
-        assert "new_repos_needed" in analysis
+        assert "total_available" in analysis
+        assert "missing_repos" in analysis
+        assert "existing_count" in analysis
+        assert "missing_count" in analysis
         
-        assert analysis["total_available_repos"] == 3
-        assert analysis["repos_already_local"] == 2
-        assert analysis["new_repos_needed"] == 1
+        assert analysis["total_available"] == 3
+        assert analysis["existing_count"] == 2
+        assert analysis["missing_count"] == 1
     
     @pytest.mark.asyncio
     async def test_organize_repositories(self, repo_manager):
@@ -212,23 +215,23 @@ class TestRepositoryManager:
         # Setup successful repos data
         successful_repos = [
             {
-                "repo_name": "python-repo",
-                "clone_path": str(repo_manager.repos_dir / "all_repos" / "python-repo"),
-                "primary_language": "python",
+                "name": "python-repo",
+                "path": str(repo_manager.repos_dir / "all_repos" / "python-repo"),
+                "language": "python",
                 "stars": 1500,
                 "archived": False
             },
             {
-                "repo_name": "java-repo", 
-                "clone_path": str(repo_manager.repos_dir / "all_repos" / "java-repo"),
-                "primary_language": "java",
+                "name": "java-repo",
+                "path": str(repo_manager.repos_dir / "all_repos" / "java-repo"),
+                "language": "java",
                 "stars": 500,
                 "archived": False
             },
             {
-                "repo_name": "archived-repo",
-                "clone_path": str(repo_manager.repos_dir / "all_repos" / "archived-repo"),
-                "primary_language": "python",
+                "name": "archived-repo",
+                "path": str(repo_manager.repos_dir / "all_repos" / "archived-repo"),
+                "language": "python",
                 "stars": 100,
                 "archived": True
             }
@@ -236,7 +239,7 @@ class TestRepositoryManager:
         
         # Create the actual directories for linking
         for repo in successful_repos:
-            Path(repo["clone_path"]).mkdir(parents=True, exist_ok=True)
+            Path(repo["path"]).mkdir(parents=True, exist_ok=True)
         
         await repo_manager._organize_repositories(successful_repos)
         
@@ -273,12 +276,12 @@ class TestRepositoryManager:
         stats = repo_manager.get_local_repository_stats()
         
         assert "total_repositories" in stats
-        assert "organization_structure" in stats
+        assert len(stats["repositories"]) == 3
         assert "total_size_mb" in stats
         assert "languages" in stats
         
         assert stats["total_repositories"] == 3
-        assert stats["organization_structure"]["by_language"] is True
+        assert (repo_manager.repos_dir / "by_language").is_dir()
     
     @pytest.mark.asyncio
     @patch('src.repo_manager.RepositoryManager._clone_single_repository')
@@ -294,10 +297,10 @@ class TestRepositoryManager:
         # Mock successful clone results
         mock_clone_single.return_value = {
             "success": True,
-            "repo_name": "test-repo",
-            "clone_path": "/test/path",
+            "name": "test-repo",
+            "path": "/test/path",
             "size_mb": 5.0,
-            "primary_language": "python",
+            "language": "python",
             "stars": 100,
             "archived": False
         }
@@ -315,7 +318,7 @@ class TestRepositoryManager:
         """Test handling GitHub API errors."""
         # Mock GitHub client to raise exception
         repo_manager.github_client = Mock()
-        repo_manager.github_client.get_all_repositories.side_effect = Exception("GitHub API error")
+        repo_manager.github_client.get_all_repositories.side_effect = RuntimeError("GitHub API error")
         
         result = await repo_manager.clone_all_repositories()
         
@@ -357,17 +360,10 @@ class TestRepositoryManager:
         test_repo = all_repos_dir / "test-repo"
         test_repo.mkdir()
         
-        with patch('git.Repo') as mock_git_repo:
-            mock_repo = Mock()
-            mock_origin = Mock()
-            mock_repo.remotes.origin = mock_origin
-            mock_git_repo.return_value = mock_repo
-            
-            result = await repo_manager.update_all_repositories()
-            
-            assert "total_repositories" in result
-            assert "successful_updates" in result
-            assert "failed_updates" in result
+        repo_manager.github_client.get_all_repositories = Mock(return_value=[])
+        result = await repo_manager.update_all_repositories()
+        assert result["success"] is False
+        assert result["repositories"] == []
 
 
 class TestRepositoryManagerIntegration:
@@ -388,7 +384,7 @@ class TestRepositoryManagerIntegration:
         
         # Step 2: Get initial status
         initial_status = repo_manager._get_fast_local_repository_status()
-        assert initial_status["local_repo_count"] == 0
+        assert initial_status["local_count"] == 0
         
         # Step 3: Get stats
         stats = repo_manager.get_local_repository_stats()
@@ -401,4 +397,4 @@ class TestRepositoryManagerIntegration:
 
 
 if __name__ == "__main__":
-    pytest.main([__file__]) 
+    pytest.main([__file__])

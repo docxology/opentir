@@ -78,7 +78,7 @@ async def run_comprehensive_analysis(
         
         # Step 2: Multi-repository analysis
         logger.info("\n📊 Step 2: Running comprehensive multi-repository analysis...")
-        multi_analyzer = MultiRepositoryAnalyzer()
+        multi_analyzer = MultiRepositoryAnalyzer(repos_base_path=orchestrator.base_dir / config.repos_dir)
         
         # Analyze all repositories
         metrics = multi_analyzer.analyze_all_repositories(force_reanalyze=False)
