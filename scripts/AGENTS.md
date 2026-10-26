@@ -1,7 +1,6 @@
 # AGENTS: `scripts/` — Thin Orchestrator Scripts
 
-Location: `scripts/` of the repo at
-`projects/ongoing/docxology/opentir` (git remote: `github.com/docxology/opentir`).
+Location: `scripts/` of the repo `docxology/opentir` (default branch `main`).
 Repo-wide policy: see `../AGENTS.md`.
 
 ## Thin-Orchestrator Contract
@@ -36,8 +35,8 @@ Run commands: see `README.md`.
   `_analyze_all_repositories`) — fragile across `src/main.py` refactors.
 - GitHub API rate limits: pass `--token` or export `GITHUB_TOKEN` (see
   `.env.example`); prefer `run_with_rate_limit_handling.py` for large runs.
-- `run_full_analysis.sh` uses system `python3` and pip-installs
-  `requirements.txt` on demand — it does not use the `venv/` that `./run.sh`
-  manages.
+- `run_full_analysis.sh` and `./run.sh` both drive the locked uv environment
+  (`uv sync --frozen` + `uv run --frozen --no-sync`); the Python scripts can
+  also run under any interpreter that has `requirements.txt` installed.
 - Not covered by unit tests; smoke-check with `--help` before relying on a
   full network run.

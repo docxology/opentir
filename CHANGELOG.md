@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased - 2026-10-25
+
+- Remove dead imports: the unused networkx/plotly/orchestrator imports in
+  `examples/advanced_statistical_analysis.py` (the example imported `networkx`,
+  which was never declared or locked, so `./run.sh --advanced-stats` crashed at
+  import time), unused seaborn and regressor imports in `comprehensive_analysis.py`,
+  and unused `Template` and `RateLimitExceededException` imports in `src/`.
+- Replace deprecated `asyncio.get_event_loop()` calls in `src/repo_manager.py`
+  with `asyncio.get_running_loop()`.
+- Refresh CI pins: `actions/checkout@v7` (was v4) and `astral-sh/setup-uv`
+  v10.3.2 (was v10.3.0).
+- Correct stale documentation: `examples/cli_usage.md` documented subcommands
+  that do not exist (`config`, `info`, `list-repos`, `clear-cache`, and others)
+  and now lists the real commands and flags; `docs/README.md`, `docs/AGENTS.md`,
+  and `AGENTS.md` now match current paths and workflows; the `src/`, `tests/`,
+  and `examples/` READMEs no longer describe the checkout as local-only scratch.
+- Note for the next release: `requirements.txt` still declares packages no code
+  imports (`tree-sitter` and its five grammars, `ast-tools`, `asyncio-throttle`,
+  `requests`, `plotly`, `kaleido`, 16 lock entries). Trimming them changes the
+  locked environment, so it needs `uv lock` plus a full test run rather than
+  riding along with documentation-only maintenance.
+
 ## 1.1.0 - 2026-10-14
 
 - Add a locked uv project, Python 3.12 development binding, Python 3.10 minimum,

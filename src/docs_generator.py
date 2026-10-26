@@ -8,7 +8,7 @@ import shutil
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from jinja2 import Environment, FileSystemLoader, Template
+from jinja2 import Environment, FileSystemLoader
 import pandas as pd
 
 from .config import config, DOCS_TEMPLATE_STRUCTURE

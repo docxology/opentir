@@ -290,7 +290,7 @@ class RepositoryManager:
     async def _clone_single_repository(self, semaphore: asyncio.Semaphore, repo_info: RepositoryInfo, force_update: bool) -> Dict[str, Any]:
         """Clone a single repository with error handling."""
         async with semaphore:
-            return await asyncio.get_event_loop().run_in_executor(
+            return await asyncio.get_running_loop().run_in_executor(
                 None, self._clone_repository_sync, repo_info, force_update
             )
     
@@ -385,7 +385,7 @@ class RepositoryManager:
                 archived_repos.append(repo)
         
         # Create symbolic links for organization
-        await asyncio.get_event_loop().run_in_executor(
+        await asyncio.get_running_loop().run_in_executor(
             None, self._create_category_links, language_groups, popular_repos, archived_repos
         )
     

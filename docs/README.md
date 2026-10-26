@@ -1,10 +1,10 @@
 # opentir — Documentation
 
-Opentir is a toolkit for analyzing, organizing, and documenting Palantir's
-open-source ecosystem (250+ repositories, per root `README.md`): it fetches
-repository metadata, clones and analyzes code, and generates documentation and
-statistics. The root `README.md` is the primary reference and contains the
-full Palantir ecosystem guide content inline.
+Opentir analyzes locally cloned GitHub repositories (default organization:
+Palantir): it fetches repository metadata, clones and analyzes code, and
+generates documentation, statistics, and visualizations. The root `README.md`
+is the canonical reference for install, CLI usage, and methodology/limits; this
+file only maps the tree.
 
 ## Repository map
 
@@ -15,30 +15,31 @@ full Palantir ecosystem guide content inline.
 - `scripts/` — workflow orchestrators (`comprehensive_workflow.py`,
   `run_full_analysis.sh`, `run_with_rate_limit_handling.py`,
   `update_all_repos.py`)
-- `multi_repo_analysis/` — multi-repository analysis support
-- `examples/` — usage examples
-- `comprehensive_analysis_results/` — output of prior analysis runs
+- `multi_repo_analysis/`, `comprehensive_analysis_results/` — generated analysis
+  output shipped as sample data
+- `examples/` — usage examples (`basic_usage.py`, `advanced_statistical_analysis.py`,
+  `cli_usage.md`)
 - `tests/` — test suite (`pytest.ini` at root)
+- `docs/manuscript/` — publication-readiness decision record
 
 ## Running
 
-The package installs a console script (per `setup.py` entry points:
-`opentir=src.cli:main`):
+The package installs a console script (per `setup.py`:
+`opentir=src.cli:main`). The locked development environment is the supported path:
 
 ```bash
-pip install -r requirements.txt   # or: pip install -e .
-opentir --help
-opentir --verbose fetch-repos --token <token> --output repos.json
-opentir analyze --repo-path <path>
+uv sync --frozen
+uv run opentir --help
+uv run opentir fetch-repos --output ./repository_list.json
+uv run opentir analyze --repo-path <path> --output-dir ./analysis_results
 ```
 
-Subcommands defined in `src/cli.py`: `fetch-repos`, clone/update, `analyze`,
-`generate-docs`, `status`, `multi-analysis`, `cleanup`. Or run the scripted
-workflow: `./run.sh` (wraps `scripts/run_full_analysis.sh`).
+Subcommands in `src/cli.py`: `fetch-repos`, `clone-all`, `analyze`,
+`generate-docs`, `build-complete`, `status`, `multi-analysis`, `cleanup`.
+Alternatively run the scripted workflow: `./run.sh` (locked `uv` environment
+plus `multi-analysis`), or `scripts/run_full_analysis.sh` for the
+update-then-analyze chain. `examples/cli_usage.md` documents the options.
 
-## Note on `docs/palantir/` links
-
-The root `README.md` links extensively to `docs/palantir/**` pages that are
-not present in this repository (they appear to describe generated or
-planned documentation). These links are recorded as known-broken; the
-ecosystem content itself is included in the README text.
+Generated documentation is written as `<output-directory>/` with a sibling
+`<output-directory>.mkdocs.yml`; the rendered site lands in
+`<output-directory>_site/`.

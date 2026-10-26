@@ -8,7 +8,7 @@ import aiohttp
 from typing import List, Dict, Any, Optional, AsyncGenerator
 from datetime import datetime
 from github import Github, Auth, Repository as GitHubRepo
-from github.GithubException import GithubException, RateLimitExceededException
+from github.GithubException import GithubException
 import time
 from contextlib import nullcontext
 

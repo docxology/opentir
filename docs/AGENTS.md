@@ -4,7 +4,7 @@
 
 | Path | Purpose |
 |---|---|
-| `src/cli.py` | Click CLI group with subcommands (`fetch-repos`, `analyze`, `generate-docs`, `status`, `multi-analysis`, `cleanup`) |
+| `src/cli.py` | Click CLI group with subcommands (`fetch-repos`, `clone-all`, `analyze`, `generate-docs`, `build-complete`, `status`, `multi-analysis`, `cleanup`) |
 | `src/main.py`, `src/config.py`, `src/utils.py` | Orchestration, configuration, logging utilities |
 | `src/github_client.py`, `src/repo_manager.py` | GitHub API access and repo cloning/organization |
 | `src/code_analyzer.py`, `src/multi_repo_analyzer.py` | Code and multi-repo statistics |
@@ -23,16 +23,15 @@
 
 ## How docs here are maintained
 
-Root `README.md` (757 lines) is the canonical reference and embeds the
-Palantir ecosystem guide. Keep `docs/README.md` a short accurate pointer;
-do not duplicate the ecosystem prose.
+Root `README.md` is the canonical reference; it states methodology and limits
+explicitly and avoids ecosystem census claims. Keep `docs/README.md` a short
+accurate pointer; do not duplicate the README prose.
 
 ## Known issues
 
-- 127 links in the root `README.md` point to `docs/palantir/**` paths that do
-  not exist in the repo. Verified 2026-08-29 by filesystem check. Fixing them
-  would require either restoring generated docs or inlining — an owner
-  decision; not silently rewritten.
+- None open. The root `README.md` no longer links to `docs/palantir/**` (those
+  links were removed in 1.1.0 because generated docs were never shipped);
+  verified 2026-10-25 by filesystem check.
 
 ## Notes for agents
 

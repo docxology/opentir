@@ -26,18 +26,12 @@ from scipy import stats
 from scipy.stats import f_oneway
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans
-import networkx as nx
-import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 import warnings
 import json
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from main import OpentirOrchestrator
-from multi_repo_analyzer import MultiRepositoryAnalyzer
 from code_analyzer import CodeAnalyzer
 from utils import Logger
 

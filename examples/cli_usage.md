@@ -1,318 +1,148 @@
 # Opentir CLI Usage Guide
 
-Opentir provides a powerful command-line interface for analyzing Palantir's open source ecosystem. This guide covers all available commands and their usage.
+All commands below are the ones defined in `src/cli.py`; run
+`uv run opentir <command> --help` for the authoritative option list.
 
 ## Installation
 
-### Quick Start (Recommended)
-
 ```bash
-# Use the provided run script (handles virtual environment automatically)
-./run.sh
-```
+# Locked development environment (recommended; installs uv first)
+uv sync --frozen
+uv run opentir --version
 
-### Manual Setup
-
-```bash
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Run the application
-python main.py
-```
-
-### Development Setup
-
-```bash
-# Install the package in development mode
-pip install -e .
+# Or install the package itself
+pip install -r requirements.txt   # or: pip install -e .
 ```
 
 ## GitHub Token Setup
 
-Opentir needs GitHub API access to download repositories. You have several options:
+Discovery, cloning, and `generate-docs` without `--offline` need GitHub API
+access (60 requests/hour unauthenticated, 5,000 with a token).
 
-### Option 1: Interactive Setup (Easiest)
 ```bash
-opentir build-complete
-```
-Opentir will guide you through token setup with step-by-step instructions.
+# 1. Interactive prompt (used when no token is configured and stdin is a TTY)
+uv run opentir fetch-repos
 
-### Option 2: Set Environment Variable
-```bash
+# 2. Environment variable
 export GITHUB_TOKEN=your_github_token_here
-opentir build-complete
+
+# 3. Explicit option
+uv run opentir fetch-repos --token your_github_token_here
 ```
 
-### Option 3: Command Line Argument
+Create tokens at https://github.com/settings/tokens with the `public_repo`
+scope. Tokens are never persisted by the CLI and interactive entry is hidden.
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `fetch-repos [--token T] [--output FILE]` | Discover organization repositories and metadata |
+| `clone-all [--force] [--token T]` | Clone missing repositories; `--force` fast-forward updates clean checkouts |
+| `analyze [--repo-path DIR] [--output-dir DIR]` | Analyze one repository or `repos/all_repos` |
+| `generate-docs [--analysis-dir DIR] [--output-dir DIR] [--token T] [--offline]` | Build documentation from saved analysis |
+| `build-complete [--token T]` | Fetch, clone, analyze, and generate documentation |
+| `status` | Report workspace state |
+| `multi-analysis [--force] [--output-dir DIR]` | Aggregate statistics, figures, and reports |
+| `cleanup [--keep-popular]` | Delete cloned repositories after confirmation |
+
+Global options: `--config-file/-c FILE`, `--verbose/-v`, `--version`.
+
+### Complete workflow
+
 ```bash
-opentir build-complete --token your_github_token_here
+uv run opentir build-complete --token YOUR_GITHUB_TOKEN
 ```
 
-**Getting a token**: Go to https://github.com/settings/tokens → Generate new token → Select `public_repo` scope
-
-## Basic Commands
-
-### Complete Workflow (Recommended)
-
-Build and analyze the complete ecosystem:
+### Step-by-step workflow
 
 ```bash
-# Run complete workflow with interactive token setup
-opentir build-complete
-
-# Alternative methods
-opentir build-complete --token YOUR_GITHUB_TOKEN
-export GITHUB_TOKEN=YOUR_TOKEN && opentir build-complete
+uv run opentir fetch-repos --output ./repository_list.json
+uv run opentir clone-all
+uv run opentir analyze
+uv run opentir generate-docs --offline
 ```
 
-### Step-by-Step Workflow
-
-Run individual steps of the workflow:
+### Local repository without GitHub
 
 ```bash
-# 1. Fetch repository information
-opentir fetch-repos  # Interactive token setup if needed
-
-# 2. Clone repositories
-opentir clone-all  # Interactive token setup if needed
-opentir clone-all --force  # Force re-clone
-
-# 3. Analyze code
-opentir analyze
-opentir analyze --repo-path path/to/repo  # Analyze specific repository
-
-# 4. Generate documentation
-opentir generate-docs  # Interactive token setup if needed
+uv run opentir analyze --repo-path ./my-repository --output-dir ./analysis_results
+uv run opentir generate-docs --offline --analysis-dir ./analysis_results --output-dir ./generated_docs
+uv run mkdocs build --strict -f generated_docs.mkdocs.yml
 ```
 
-**Note**: All commands that need GitHub access will prompt for a token if one isn't already configured.
-
-## Status and Information
-
-Check workspace and analysis status:
+### Cross-repository analysis
 
 ```bash
-# Get workspace status
-opentir status
-
-# Get repository information
-opentir info repo_name
-
-# List all repositories
-opentir list-repos
-opentir list-repos --by-language  # Group by language
-opentir list-repos --by-category  # Group by category
+./run.sh                       # uv sync + multi-analysis
+./run.sh --force-reanalysis    # ignore cached aggregate metrics
+./run.sh --advanced-stats      # also run examples/advanced_statistical_analysis.py
+uv run opentir multi-analysis --force --output-dir ./reports
 ```
 
 ## Configuration
 
-Manage configuration settings:
+Settings live in `src/config.py`. Pass a JSON file, use environment variables
+(uppercase key names: `BASE_DIR`, `LOG_LEVEL`, `GITHUB_TOKEN`, ...), or a `.env`
+file; `GITHUB_TOKEN` is also accepted directly.
 
 ```bash
-# Set GitHub token
-opentir config set github_token YOUR_GITHUB_TOKEN
-
-# Set base directory
-opentir config set base_dir /path/to/workspace
-
-# View current configuration
-opentir config show
-
-# Reset configuration to defaults
-opentir config reset
+uv run opentir --config-file ./settings.json status
 ```
 
-## Cleanup and Maintenance
-
-Manage workspace and cached data:
-
-```bash
-# Clean workspace
-opentir cleanup
-opentir cleanup --keep-popular  # Keep popular repositories
-opentir cleanup --older-than 30  # Clean repositories older than 30 days
-
-# Clear cache
-opentir clear-cache
+```json
+{
+  "base_dir": "./workspace",
+  "github_org": "palantir",
+  "include_tests": false,
+  "include_examples": false,
+  "max_concurrent_requests": 10
+}
 ```
 
-## Advanced Usage
+There are no `opentir config`/`clear-cache`/`list-repos` subcommands; edit the
+JSON file (or the environment) and re-run.
 
-### Filtering and Selection
-
-```bash
-# Analyze specific languages
-opentir analyze --languages python,java
-
-# Filter by stars
-opentir clone-repos --min-stars 100
-
-# Filter by activity
-opentir analyze --active-since "2023-01-01"
-```
-
-### Output Formats
-
-```bash
-# Generate JSON output
-opentir analyze --output json
-
-# Generate CSV reports
-opentir generate-docs --format csv
-
-# Generate detailed metrics
-opentir analyze --detailed-metrics
-```
-
-### Parallel Processing
-
-```bash
-# Set concurrency for operations
-opentir build-complete --workers 4
-
-# Parallel repository cloning
-opentir clone-repos --parallel
-```
-
-## Environment Variables
-
-Opentir supports the following environment variables:
-
-- `GITHUB_TOKEN`: GitHub API token
-- `OPENTIR_BASE_DIR`: Base directory for workspace
-- `OPENTIR_LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
-- `OPENTIR_CACHE_DIR`: Cache directory location
-
-## Examples
-
-### Basic Analysis
-
-```bash
-# Quick analysis of popular repositories
-opentir build-complete --token YOUR_GITHUB_TOKEN --min-stars 1000
-
-# Generate HTML documentation
-opentir build-complete --token YOUR_GITHUB_TOKEN --docs-format html
-```
-
-### Focused Analysis
-
-```bash
-# Analyze specific repository with detailed metrics
-opentir analyze --repo foundry --detailed-metrics
-
-# Generate documentation for Java repositories
-opentir generate-docs --languages java --format html
-```
-
-### Maintenance
-
-```bash
-# Update existing repositories
-opentir update-repos
-
-# Clean old data and regenerate
-opentir cleanup && opentir build-complete
-```
-
-## Error Handling
-
-Common error messages and solutions:
-
-- `Rate limit exceeded`: Wait or use a GitHub token
-- `Repository not found`: Check repository name
-- `Permission denied`: Check token permissions
-- `Invalid token`: Verify GitHub token
-
-## Best Practices
-
-1. Always use a GitHub token for better rate limits
-2. Start with popular repositories first
-3. Use parallel processing for large analyses
-4. Regularly clean up old data
-5. Check status before long operations
-
-## Getting Help
-
-```bash
-# Show help
-opentir --help
-
-# Show command help
-opentir COMMAND --help
-
-# Show version
-opentir --version
-```
-
-For more information, visit the [Opentir Documentation](https://github.com/username/opentir).
-
-## Output Structure
-
-After running the complete workflow, you'll have:
+## Output structure
 
 ```
-├── repos/                  # Cloned repositories
-│   ├── all_repos/         # All repositories
-│   ├── by_language/       # Organized by language
-│   ├── by_category/       # Organized by category
-│   └── popular/           # Popular repositories
-├── docs/                  # Generated documentation
-│   ├── index.md           # Main documentation
-│   ├── repositories/      # Repository details
-│   ├── api_reference/     # API documentation
-│   ├── analysis/          # Analysis reports
-│   └── mkdocs.yml         # MkDocs configuration
-├── analysis_results/      # Raw analysis data
-│   ├── repository_analyses.json
-│   └── functionality_matrix.json
-└── logs/                  # Application logs
-    └── opentir.log
+repos/
+├── all_repos/           # cloned repositories
+├── by_language/         # symlinks grouped by detected language
+├── popular/             # symlinks for popular repositories
+└── by_category/         # symlinks for archived/category groupings
+analysis_results/        # per-repository JSON, all_analyses.json, functionality_matrix.json
+docs/                    # generated documentation, docs.mkdocs.yml, docs_site/
+multi_repo_analysis/     # cross-repo JSON, reports/, visualizations/, individual_analyses/
+logs/                    # <logger>.log, created on first log record
 ```
+
+`generate-docs --output-dir X` writes the MkDocs configuration next to the
+directory as `X.mkdocs.yml` and the rendered site to `X_site/`.
 
 ## Troubleshooting
 
-### Rate Limiting
-
-If you encounter rate limiting:
-
 ```bash
-# Use GitHub token for higher limits
-export GITHUB_TOKEN=your_token_here
+# Verbose logging
+uv run opentir --verbose analyze
 
-# Check current status
-opentir status
-```
+# Inspect logs (file is created lazily)
+tail -f logs/opentir_cli.log
 
-### Large Repository Size
+# Rate limits: use a token, or throttle large runs
+uv run python scripts/run_with_rate_limit_handling.py --token YOUR_TOKEN
 
-```bash
-# Clean up to free space
-opentir cleanup --keep-popular
+# Reclaim space from cloned repositories
+uv run opentir cleanup --keep-popular
 
-# Check repository sizes
-opentir status
-```
-
-### Analysis Errors
-
-```bash
-# Run with verbose logging
-opentir --verbose analyze
-
-# Check logs
-tail -f logs/opentir.log
+# Cache/aggregate metrics went stale
+./run.sh --force-reanalysis
 ```
 
 ## Tips
 
-1. **GitHub Token**: Always use a GitHub token for better rate limits
-2. **Disk Space**: The complete ecosystem requires ~5-10GB of storage
-3. **Time**: Complete analysis can take 30-60 minutes depending on your system
-4. **Documentation**: Generated docs are best viewed with MkDocs serve
-5. **Updates**: Use `--force` flag to update existing repositories 
+1. Always use a GitHub token for discovery and cloning.
+2. Cloning the full organization takes substantial disk space; check with `opentir status`.
+3. Keep `UV_CACHE_DIR`, `TMPDIR`, and `MPLCONFIGDIR` on the same volume as the workspace on external storage.
+4. View generated documentation with `uv run mkdocs serve -f docs.mkdocs.yml`.
+5. `clone-all --force` fast-forwards clean checkouts only; commit or stash local changes first.

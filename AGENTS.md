@@ -1,30 +1,32 @@
 # AGENTS.md — `opentir`
 
-> Local-only path under `projects/ongoing/DataTools/` — matched by the
-> root `.gitignore` rule `projects/*`; never commit. Repo-wide policy:
-> see `/Volumes/external_drive/Git/template/projects/ongoing/AGENTS.md`.
+Public repository `docxology/opentir` (default branch `main`); the local working
+copy lives under `projects/ongoing/DataTools/` in the vault, where the `.gitignore`
+rule `projects/*` covers scratch data only. Vault-wide rules: see the vault root
+`AGENTS.md`.
 
 ## What this is
 
 `opentir` is a toolkit for analyzing Palantir's open-source ecosystem on GitHub:
-fetch the ~250 repositories, clone them locally, analyze code (multi-language
-function/complexity extraction), run multi-repo statistics (ANOVA/PCA/clustering),
-and generate documentation sites and reports. Packaging via `setup.py` (console
-entry point `opentir = src.cli:main`); deps in `requirements.txt`.
+fetch the organization's public repositories, clone them locally, analyze code
+(Python AST extraction; regex heuristics for JS/TS/Java/Go), run multi-repo
+statistics (ANOVA/PCA/clustering), and generate documentation sites and reports.
+Packaging via `setup.py` (console entry point `opentir = src.cli:main`); runtime
+deps in `requirements.txt`, dev tools in `pyproject.toml`, pins in `uv.lock`.
 
-## How to run (derived from run.sh / cli.py / main.py source, 2026-08-29)
+## How to run (derived from run.sh / cli.py / main.py source, 2026-10-25)
 
-- `./run.sh` — authoritative orchestrator: creates `venv/`, installs deps, runs
-  `main.py` (workspace status + multi-repo analysis over already-cloned repos),
-  prints generated report/visualization paths. Options: `--advanced-stats` (also
+- `./run.sh` — authoritative orchestrator: `uv sync --frozen`, then
+  `uv run opentir multi-analysis` over already-cloned repos, and prints the
+  results directory (`multi_repo_analysis/`). Options: `--advanced-stats` (also
   runs `examples/advanced_statistical_analysis.py` → `advanced_analysis_results/`),
-  `--force-reanalysis` (deletes multi_repo_analysis cross-repo JSON caches),
-  `--skip-deps`.
+  `--force-reanalysis` (passed through as `multi-analysis --force`, recomputes
+  instead of reusing cached aggregates), `--skip-deps` (run without `uv sync`).
 - Click CLI (`src/cli.py`, installed as `opentir` or `python -m src.cli`):
   `fetch-repos [--token] [--output]`, `clone-all [--force] [--token]` (async),
   `analyze [--repo-path] [--output-dir]`, `generate-docs [--analysis-dir]
-  [--output-dir] [--token]`, `build-complete [--token]` (fetch → clone → analyze
-  → docs), `status`, `multi-analysis [--force] [--output-dir]`, `cleanup
+  [--output-dir] [--token] [--offline]`, `build-complete [--token]` (fetch → clone
+  → analyze → docs), `status`, `multi-analysis [--force] [--output-dir]`, `cleanup
   [--keep-popular]` (with confirmation prompt).
 - `python main.py` — standalone orchestrator entry (status check + multi-repo
   analysis over existing repos/). `python demo.py` — capability walkthrough, no
@@ -38,13 +40,16 @@ entry point `opentir = src.cli:main`); deps in `requirements.txt`.
   `advanced_analysis_results/`, cloned `repos/` trees.
 - GitHub API rate limits: use a token (`--token` / `GITHUB_TOKEN`; see `.env.example`)
   and prefer `scripts/run_with_rate_limit_handling.py` for large runs.
-- Root `README.md` links to ~127 `docs/palantir/**` paths that do not exist on
-  disk (verified 2026-08-29) — generated docs were not shipped; don't treat
-  those links as live.
-- Tests: `pytest` via `pytest.ini` in the project root (`tests/`).
+- `requirements.txt` still declares packages the code does not import
+  (`tree-sitter` and its grammars, `ast-tools`, `asyncio-throttle`, `requests`,
+  `plotly`, `kaleido`); dropping them needs `uv lock` plus a full test run
+  (a slow operation on external storage). The README's methodology section is
+  the source of truth for which languages have real parsers.
+- Tests: `pytest` via `pytest.ini` in the project root (`tests/`); CI runs the
+  suite on Python 3.10 and 3.12 with a 90% coverage gate.
 
-## Layout (verified by direct listing, 2026-08-29)
+## Layout (verified by direct listing, 2026-10-25)
 
 ```
-comprehensive_analysis_results/, docs/, examples/, multi_repo_analysis/, scripts/, src/, tests/, .cursorignore, .cursorrules, .env.example, .gitattributes, .gitignore, DOCUMENTATION_UPDATES.md, IMPROVEMENTS_SUMMARY.md, README.md, STATISTICAL_ANALYSIS_SUMMARY.md, comprehensive_analysis.py, demo.py, main.py, pytest.ini, requirements.txt, run.sh, setup.py
+.github/workflows/, comprehensive_analysis_results/, docs/, examples/, multi_repo_analysis/, scripts/, src/, tests/, .cursorignore, .cursorrules, .env.example, .gitattributes, .gitignore, .python-version, AGENTS.md, CHANGELOG.md, DOCUMENTATION_UPDATES.md, IMPROVEMENTS_SUMMARY.md, LICENSE, MANIFEST.in, README.md, STATISTICAL_ANALYSIS_SUMMARY.md, comprehensive_analysis.py, demo.py, main.py, pyproject.toml, pytest.ini, requirements.txt, run.sh, setup.py, uv.lock
 ```
