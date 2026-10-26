@@ -16,11 +16,13 @@
   and now lists the real commands and flags; `docs/README.md`, `docs/AGENTS.md`,
   and `AGENTS.md` now match current paths and workflows; the `src/`, `tests/`,
   and `examples/` READMEs no longer describe the checkout as local-only scratch.
-- Note for the next release: `requirements.txt` still declares packages no code
-  imports (`tree-sitter` and its five grammars, `ast-tools`, `asyncio-throttle`,
-  `requests`, `plotly`, `kaleido`, 16 lock entries). Trimming them changes the
-  locked environment, so it needs `uv lock` plus a full test run rather than
-  riding along with documentation-only maintenance.
+- Note for the next release, dependency declarations to fix in one pass: commit
+  7877379 trimmed nothing on purpose, so `requirements.txt` still declares
+  packages no code imports (`tree-sitter` and its five grammars, `ast-tools`,
+  `asyncio-throttle`, `requests`, `plotly`, `kaleido`, 16 lock entries), and
+  `PyYAML` is imported directly by `src/docs_generator.py` yet declared only
+  transitively through `mkdocs`. Both need `uv lock` plus a full test run, which
+  does not fit a documentation-only maintenance pass on slow storage.
 
 ## 1.1.0 - 2026-10-14
 
