@@ -2,7 +2,7 @@
 
 > Local-only path under `projects/ongoing/DataTools/` — matched by the
 > root `.gitignore` rule `projects/*`; never commit. Repo-wide policy:
-> see `/Volumes/external_drive/Git/template/projects/ongoing/AGENTS.md`.
+> Repository-wide policy for template projects is maintained in the template repository, not restated here.
 
 ## What this is
 
