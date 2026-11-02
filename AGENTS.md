@@ -1,9 +1,7 @@
 # AGENTS.md — `opentir`
 
-Public repository `docxology/opentir` (default branch `main`); the local working
-copy lives under `projects/ongoing/DataTools/` in the vault, where the `.gitignore`
-rule `projects/*` covers scratch data only. Vault-wide rules: see the vault root
-`AGENTS.md`.
+Public repository `docxology/opentir` (default branch `main`), a DataTools-lane
+project. Vault-wide rules: see the vault root `AGENTS.md`.
 
 ## What this is
 
