@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "opentir"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dynamic = ["version", "description", "readme", "dependencies", "authors", "classifiers", "urls", "scripts"]
 
 [dependency-groups]
