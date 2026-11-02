@@ -1,7 +1,5 @@
 # AGENTS.md — `opentir/examples`
 
-> Local-only path under `projects/ongoing/DataTools/` — matched by the
-> root `.gitignore` rule `projects/*`; never commit. Repo-wide policy:
 > Repository-wide policy for template projects is maintained in the template repository, not restated here.
 
 ## What this is
