@@ -33,14 +33,13 @@ setup(
         "License :: OSI Approved :: Apache Software License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Software Development :: Version Control :: Git",
         "Topic :: Documentation",
     ],
-    python_requires=">=3.10",
+    python_requires=">=3.11",
     install_requires=requirements,
     entry_points={
         'console_scripts': [
