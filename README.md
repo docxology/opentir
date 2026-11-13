@@ -13,7 +13,7 @@ on the checked-out sources; this README does not represent a current ecosystem c
 
 ## Install and verify
 
-Python 3.10 or newer is required. The development interpreter is Python 3.12.
+Python 3.11 or newer is required. The development interpreter is Python 3.12.
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then:
 
 ```sh
@@ -197,12 +197,10 @@ flowchart TB
 
 ## Development and releases
 
-CI runs the offline test suite with a 90% coverage gate on Python 3.10 and 3.12, checks Python syntax
+CI runs the offline test suite with a 90% coverage gate on Python 3.11 and 3.12, checks Python syntax
 errors with Ruff, builds distributions, and checks package metadata with Twine.
 Regression tests exercise real local Git, a local HTTP server, CLI subprocesses,
 and a strict MkDocs build. Existing legacy unit tests also use mocks.
-Python 3.10 on macOS uses SciPy below 1.15 because the resolved 1.15.3 wheel
-failed to load on the release-validation machine.
 
 ```sh
 uv run pytest --cov=src --cov-report=term-missing
