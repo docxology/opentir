@@ -23,9 +23,8 @@
 
 ## How docs here are maintained
 
-Root `README.md` is the canonical reference; it states methodology and limits
-explicitly and avoids ecosystem census claims. Keep `docs/README.md` a short
-accurate pointer; do not duplicate the README prose.
+Use [the documentation index](README.md) for the maintained local workflow,
+method, and technical note. Preserve earlier analyses as historical artifacts.
 
 ## Known issues
 

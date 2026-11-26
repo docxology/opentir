@@ -153,7 +153,6 @@ Thumbs.db
 
 # Opentir specific
 repos/
-docs/
 .cache/
 logs/
 analysis_results/
@@ -179,3 +178,23 @@ config.json
 !.github/workflows/*.yml
 !uv.lock
 !.python-version
+
+
+# Local documentation examples and technical-note outputs
+/output/
+
+
+# Keep the default generate-docs outputs separate from maintained guides.
+/docs/*
+!/docs/AGENTS.md
+!/docs/README.md
+!/docs/TODO.md
+!/docs/architecture.md
+!/docs/local-analysis.md
+!/docs/method.md
+!/docs/rendering.md
+!/docs/setup.md
+!/docs/archive/
+!/docs/examples/
+!/docs/manuscript/
+!/docs/manuscript/config.yaml

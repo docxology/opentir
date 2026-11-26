@@ -41,7 +41,7 @@ deps in `requirements.txt`, dev tools in `pyproject.toml`, pins in `uv.lock`.
 - `requirements.txt` still declares packages the code does not import
   (`tree-sitter` and its grammars, `ast-tools`, `asyncio-throttle`, `requests`,
   `plotly`, `kaleido`); dropping them needs `uv lock` plus a full test run
-  (a slow operation on external storage). The README's methodology section is
+  (a slow operation on external storage). The [method guide](docs/method.md) is
   the source of truth for which languages have real parsers.
 - Tests: `pytest` via `pytest.ini` in the project root (`tests/`); CI runs the
   suite on Python 3.10 and 3.12 with a 90% coverage gate.
