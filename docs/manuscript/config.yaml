@@ -1,0 +1,30 @@
+paper:
+  title: "Opentir"
+  subtitle: "A Local Worked Example of Static Source Extraction"
+  description: "A bounded demonstration of Python syntax extraction and offline documentation generation."
+
+authors:
+  - name: "Daniel Ari Friedman"
+    orcid: "0000-0001-6232-9096"
+
+publication:
+  github_repository: docxology/opentir
+  repository_url: https://github.com/docxology/opentir
+
+keywords:
+  - static source analysis
+  - abstract syntax tree
+  - documentation
+  - local verification
+
+metadata:
+  language: en-US
+  license: Apache-2.0
+
+render:
+  formats:
+    pdf: true
+    html: true
+    docx: false
+    epub: false
+    slides: false
