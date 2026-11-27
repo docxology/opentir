@@ -43,8 +43,9 @@ deps in `requirements.txt`, dev tools in `pyproject.toml`, pins in `uv.lock`.
   `plotly`, `kaleido`); dropping them needs `uv lock` plus a full test run
   (a slow operation on external storage). The [method guide](docs/method.md) is
   the source of truth for which languages have real parsers.
-- Tests: `pytest` via `pytest.ini` in the project root (`tests/`); CI runs the
-  suite on Python 3.10 and 3.12 with a 90% coverage gate.
+- Run [the test suite](tests/README.md) from the repository root with the
+  locked uv environment. The tracked Python workflow configures Python 3.11
+  and 3.12 with a 90% coverage gate.
 
 ## Layout (verified by direct listing, 2026-10-25)
 
